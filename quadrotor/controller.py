@@ -103,6 +103,21 @@ class Controller():
         self.limit(alpha_sp, self.px4_params['angacc_max'])
         return alpha_sp
 
+# class LQRController():
+#     def __init__(self, Q=np.eye(13), R=np.eye(4)):
+#         self.Q = Q
+#         self.R = R
+    
+#     def __call__(self, X):
+#         A = np.zeros((13,13))
+#         A[0,7] = A[1,8] = A[2,9] = 1
+
+# class RLController():
+#     def __init__(self):
+        
+#     def 
+
+
 class PIDController(Controller):
     def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, ctrlparamfile=DEFAULT_CONTROL_PARAM_FILE):
         super().__init__(quadparamfile=quadparamfile)
@@ -234,7 +249,45 @@ class MetaAdapt(PIDController):
     def meta_adapt(self, ):
         raise NotImplementedError
 
+class MetaAdaptLinear(MetaAdapt):
+    # f_hat = (Wx+b)^T * a
+    def __init__(self, dim_a=100, eta_a_base=0.01, eta_A_base=0.01):
+        super().__init__()
+        self.dim_a = dim_a - dim_a % 3
+        self.eta_a_base = eta_a_base
+        self.eta_A_base = eta_A_base
+    
+    def reset_controller(self):
+        dim_A = int(self.dim_a / 3)
+        self.W = np.random.uniform(low=-1, high=1, size=(dim_A, 13))
+        self.a = np.ramdom.uniform(low=-1, high=1, size=(self.dim_a))
+        self.b = np.random.uniform(low=-1, high=1, size=(dim_A))
+        self.inner_adapt_count = 0
+        self.meta_adapt_count = 0
+        self.batch = []
+    
+    def get_Y(self, X):
+        return np.kron(np.eye(3), self.W @ X + self.b)
+
+    def get_f_hat(self, X):
+        return self.get_Y(X) @ self.a
+    
+    def update_batch(self, X, fhat, y):
+        self.batch.append((X, fhat, y))
+    
+    def inner_adapt(self, X, fhat, y):
+        self.inner_adapt_count += 1
+        eta_a = self.eta_a_base / np.sqrt(self.inner_adapt_count)
+        self.a -= eta_a * 2 * (fhat - y).transpose() @ self.get_Y(X)
+
+    def meta_adapt(self):
+        self.inner_adapt_count = 0
+        self.meta_adapt_count += 1
+        eta_A = self.eta_A_base / np.sqrt(self.meta_adapt_count)
+
+
 class MetaAdaptDeep(MetaAdapt):
+    # f_hat = phi(x)^T * a
     class Phi(nn.Module):
         def __init__(self, dim_kernel, layer_sizes):
             super().__init__()

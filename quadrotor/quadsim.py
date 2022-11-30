@@ -40,7 +40,7 @@ class Quadrotor():
                                 (l_arm, l_arm, h)))
         self.Vwind = np.zeros(3)
         # t_last_wind_update
-    
+
     def get_wind_v(self, t):
         dt = t - self.t_last_wind_update
         if dt > self.params['wind_update_period']:
