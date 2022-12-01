@@ -76,8 +76,8 @@ class Quadrotor():
     
     def f(self, X, Z, t, test=False):
         p = X[0:3]
+        X[3:7] = rowan.normalize(X[3:7])
         q = X[3:7]
-        #q = rowan.normalize(q)
         R = rowan.to_matrix(q)
         v = X[7:10]
         w = X[10:]
@@ -117,9 +117,9 @@ class Quadrotor():
             Xdot = (k1 + 2*k2 + 2*k3 + k4)/6 / dt
             X = X + (k1 + 2*k2 + 2*k3 + k4)/6
         elif self.params['integration_method'] == 'euler':
+            Z = self.update_motor_speed(Z=Z, u=u, dt=dt)
             Xdot = self.f(X,Z,t)
             X = X + dt * Xdot
-            Z = self.update_motor_speed(Z=Z, u=u, dt=dt)
         else:
             raise NotImplementedError
         X[3:7] = rowan.normalize(X[3:7])
@@ -146,17 +146,21 @@ class Quadrotor():
         imu_meas = np.zeros(3)
 
         while t < self.params['t_stop']:
-            if t >= t_posctrl:
+            if (self.name == "RL"):
                 pd, vd, ad = trajectory(t)
-                T_sp, q_sp = controller.position(X=X_meas, imu=imu_meas, pd=pd, vd=vd, ad=ad, t=t, last_wind_update=self.t_last_wind_update)
-                t_posctrl += controller.params['dt_posctrl']
-            if t >= t_attctrl:
-                w_sp = controller.attitude(q=X[3:7], q_sp=q_sp)
-                t_attctrl += controller.params['dt_attctrl']
-            if t >= t_angratectrl:
-                torque_sp = controller.angrate(w=X[10:], w_sp=w_sp, dt=controller.params['dt_angratectrl'])
-                u = controller.mixer(torque_sp=torque_sp, T_sp=T_sp)
-                t_angratectrl += controller.params['dt_angratectrl']
+                u = controller.getu(X)
+            else:
+                if t >= t_posctrl:
+                    pd, vd, ad = trajectory(t)
+                    T_sp, q_sp = controller.position(X=X_meas, imu=imu_meas, pd=pd, vd=vd, ad=ad, t=t, last_wind_update=self.t_last_wind_update)
+                    t_posctrl += controller.params['dt_posctrl']
+                if t >= t_attctrl:
+                    w_sp = controller.attitude(q=X[3:7], q_sp=q_sp)
+                    t_attctrl += controller.params['dt_attctrl']
+                if t >= t_angratectrl:
+                    torque_sp = controller.angrate(w=X[10:], w_sp=w_sp, dt=controller.params['dt_angratectrl'])
+                    u = controller.mixer(torque_sp=torque_sp, T_sp=T_sp)
+                    t_angratectrl += controller.params['dt_angratectrl']
             (X, t, Z, Xdot) = self.step(X=X, u=u, t=t, dt=self.params['dt'], Z=Z)
             X_meas = X
             imu_meas = Xdot[7:10]
@@ -167,13 +171,14 @@ class Quadrotor():
                 t_readout += self.params['dt_readout']
                 yield copy.deepcopy(logentry)
         
-    def reset_status(self):
+    def reset_status(self, wind_list=None):
         self.t_last_wind_update = 0
         self.wind_count = 0
+        self.VwindList = wind_list
 
-    def run(self, controller, trajectory=None, seed=None, wind_velocity_list=None, reset_control=True):
-        self.reset_status()
-        self.VwindList = wind_velocity_list
+    def run(self, controller, trajectory=None, seed=None, wind_velocity_list=None, reset_control=True, Name=""):
+        self.name = Name
+        self.reset_status(wind_velocity_list)
         if (reset_control):
             controller.reset_controller()
         log = list(tqdm(self.runiter(trajectory=trajectory, controller=controller), total=(self.params['t_stop']-self.params['t_start'])/self.params['dt_readout']))

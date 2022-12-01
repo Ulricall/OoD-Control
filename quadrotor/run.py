@@ -11,13 +11,15 @@ def setup_seed(seed):
     random.seed(seed)
 
 def train(C, Q):
+    setup_seed(1)
     Wind_Velocity = np.random.normal(loc=0, scale=1, size=(50,3))
     Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity)
 
 def test(C, Q, Name, reset_control=True):
+    setup_seed(2)
     C.state = 'test'
     Wind_Velocity = np.random.uniform(low=-8, high=8, size=(50,3))
-    log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control)
+    log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
     log['p'] = log['X'][:, 0:3]
     #print(log['p'])
     squ_error = np.sum((log['p']-log['pd'])**2, 1)
@@ -39,9 +41,14 @@ def objfunction(x1, x2):
     q_ood = quadsim.Quadrotor()
     q_linear = quadsim.Quadrotor()
 
+    q_rl = quadsim.Quadrotor()
+    c_rl = controller.RLController(q_rl)
+    c_rl.train()
+
     train(c_deep, q_deep)
     train(c_ood, q_ood)
     
+    test(c_rl, q_rl, "RL", False)
     test(c_pid, q_pid, "PID")
     test(c_linear, q_linear, "Linear")
     test(c_deep, q_deep, "OMAC(deep)", False)

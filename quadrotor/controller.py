@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.utils import spectral_norm
+import copy
+from tqdm import tqdm
 
 torch.set_default_tensor_type('torch.DoubleTensor')
 
@@ -112,11 +114,75 @@ class Controller():
 #         A = np.zeros((13,13))
 #         A[0,7] = A[1,8] = A[2,9] = 1
 
-# class RLController():
-#     def __init__(self):
-        
-#     def 
+class RLController():
+    class Phi(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = nn.Linear(13,100)
+            self.fc2 = nn.Linear(100,4)
+        def forward(self, x):
+            x = F.relu(self.fc1(x))
+            return self.fc2(x)
 
+    def __init__(self, Q, reward_delay=0.9, alpha_x=1, alpha_y=1, alpha_z=1, \
+        alpha_xdot=0.1, alpha_ydot=0.1, alpha_zdot=0.1, alpha_w=0.1):
+        self.reward_delay = reward_delay
+        self.alpha_x = alpha_x
+        self.alpha_y = alpha_y
+        self.alpha_z = alpha_z
+        self.alpha_xdot = alpha_xdot
+        self.alpha_ydot = alpha_ydot
+        self.alpha_zdot = alpha_zdot
+        self.alpha_w = alpha_w
+        self.Q = Q
+        self.params = readparamfile(DEFAULT_QUAD_PARAMETER_FILE)
+
+        self.phi = self.Phi()
+    
+    def R(self, X, u):
+        return -self.alpha_x*(X[0]**2) - self.alpha_y*(X[1]**2) - self.alpha_z*\
+            (X[2]**2) - self.alpha_xdot*(X[7]**2) - self.alpha_ydot*(X[8]**2) -\
+            self.alpha_zdot*(X[9]**2) - self.alpha_w*np.linalg.norm(X[10:13],2)\
+            - 0.1 * np.sum(u ** 2)
+    
+    def calculate_reward(self):
+        dt = 0.1
+        reward = 0
+        for T in range(5):
+            gamma = 1
+            t = 0
+            vwind = np.random.normal(0, 1, (20,3))
+            self.Q.reset_status(vwind)
+            X = np.zeros(13)
+            X[3] = 1.
+            for i in range(100):
+                u = self.getu(X)
+                # print(u)
+                (X, t, Z, Xdot) = self.Q.step(X, u, t, dt)
+                reward += gamma * self.R(X, u)
+                gamma *= self.reward_delay
+        return reward / 5
+    
+    def getu(self, X):
+        u = self.phi(torch.from_numpy(X)).detach().numpy()
+        return np.abs(u)
+
+    def train(self):
+        #Initial Case
+        reward = self.calculate_reward()
+        for i in tqdm(range(2000)):
+            # add random noise to the parameters
+            self.phi_copy = copy.deepcopy(self.phi)
+            gassian_kernel = torch.distributions.Normal(0, 1)
+            with torch.no_grad():
+                for param in self.phi.parameters():
+                    param.mul_(torch.exp(gassian_kernel.sample(param.size())))
+            new_reward = self.calculate_reward()
+            if (new_reward > reward):
+                pass
+            else:
+                if (np.random.uniform(0,1)>0.1):
+                    self.phi = self.phi_copy
 
 class PIDController(Controller):
     def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, ctrlparamfile=DEFAULT_CONTROL_PARAM_FILE):
