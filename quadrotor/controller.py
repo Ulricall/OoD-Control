@@ -250,7 +250,7 @@ class MetaAdapt(PIDController):
         raise NotImplementedError
 
 class MetaAdaptLinear(MetaAdapt):
-    # f_hat = (Wx+b)^T * a
+    # f_hat = (Wx+b) * A * a
     def __init__(self, dim_a=100, eta_a_base=0.01, eta_A_base=0.01):
         super().__init__()
         self.dim_a = dim_a - dim_a % 3
@@ -258,9 +258,10 @@ class MetaAdaptLinear(MetaAdapt):
         self.eta_A_base = eta_A_base
     
     def reset_controller(self):
-        dim_A = int(self.dim_a / 3)
+        super().reset_controller()
+        self.dim_A = dim_A = int(self.dim_a / 3)
         self.W = np.random.uniform(low=-1, high=1, size=(dim_A, 13))
-        self.a = np.ramdom.uniform(low=-1, high=1, size=(self.dim_a))
+        self.a = np.random.uniform(low=-1, high=1, size=(self.dim_a))
         self.b = np.random.uniform(low=-1, high=1, size=(dim_A))
         self.inner_adapt_count = 0
         self.meta_adapt_count = 0
@@ -273,7 +274,7 @@ class MetaAdaptLinear(MetaAdapt):
         return self.get_Y(X) @ self.a
     
     def update_batch(self, X, fhat, y):
-        self.batch.append((X, fhat, y))
+        self.batch.append((X, fhat, y, self.a.copy()))
     
     def inner_adapt(self, X, fhat, y):
         self.inner_adapt_count += 1
@@ -284,7 +285,11 @@ class MetaAdaptLinear(MetaAdapt):
         self.inner_adapt_count = 0
         self.meta_adapt_count += 1
         eta_A = self.eta_A_base / np.sqrt(self.meta_adapt_count)
-
+        for i in range(self.dim_A):
+            for X, fhat, y, a in self.batch:
+                self.W[i,:] -= eta_A * 2 * (fhat - y).transpose() @ \
+                    np.array([a[i],a[i+self.dim_A],a[i+self.dim_A*2]]) @ X
+        self.batch = []
 
 class MetaAdaptDeep(MetaAdapt):
     # f_hat = phi(x)^T * a

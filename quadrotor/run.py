@@ -16,7 +16,7 @@ def train(C, Q):
 
 def test(C, Q, Name, reset_control=True):
     C.state = 'test'
-    Wind_Velocity = np.random.uniform(low=-6, high=6, size=(50,3))
+    Wind_Velocity = np.random.uniform(low=-8, high=8, size=(50,3))
     log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control)
     log['p'] = log['X'][:, 0:3]
     #print(log['p'])
@@ -33,14 +33,17 @@ def objfunction(x1, x2):
     c_pid = controller.PIDController()
     c_deep = controller.MetaAdaptDeep(eta_a_base=0.005, eta_A_base=0.05)
     c_ood = controller.MetaAdaptOoD(eta_a_base=0.005, eta_A_base=0.05, noise_a=noise_a, noise_x=noise_x)
+    c_linear = controller.MetaAdaptLinear()
     q_pid = quadsim.Quadrotor()
     q_deep = quadsim.Quadrotor()
     q_ood = quadsim.Quadrotor()
+    q_linear = quadsim.Quadrotor()
 
     train(c_deep, q_deep)
     train(c_ood, q_ood)
     
     test(c_pid, q_pid, "PID")
+    test(c_linear, q_linear, "Linear")
     test(c_deep, q_deep, "OMAC(deep)", False)
     test(c_ood, q_ood, "OoD-Control", False)
 
