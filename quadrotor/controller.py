@@ -462,10 +462,7 @@ class NeuralFly(MetaAdaptDeep):
         self.h_optimizer = optim.Adam(params=self.h.parameters(), lr=self.lr)
         self.h_loss = nn.CrossEntropyLoss()
     
-    def meta_adapt(self, k=0):
-        #if method == 'DIML':
-        #self.meta_adapt(k=xxx)
-        #super().meta_adapt()
+    def meta_adapt(self):
         self.inner_adapt_count = 0
         self.optimizer.zero_grad()
         loss = 0
