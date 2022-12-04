@@ -10,15 +10,20 @@ def setup_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-def train(C, Q):
-    setup_seed(1)
-    Wind_Velocity = np.random.normal(loc=0, scale=1, size=(50,3))
-    Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity)
+def train(C, Q, Name=""):
+    print("Training " + Name)
+    for i in range(3):
+        setup_seed(i)
+        if (Name == 'Neural-Fly'):
+            C.wind_idx = i
+        Wind_Velocity = np.random.normal(loc=0, scale=0.5*(i+1), size=(20,3))
+        Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity)
 
 def test(C, Q, Name, reset_control=True):
-    setup_seed(2)
+    print("Testing " + Name)
+    setup_seed(234)
     C.state = 'test'
-    Wind_Velocity = np.random.uniform(low=-8, high=8, size=(50,3))
+    Wind_Velocity = np.random.uniform(low=-6, high=6, size=(20,3))
     log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
     log['p'] = log['X'][:, 0:3]
     #print(log['p'])
@@ -33,26 +38,30 @@ def objfunction(x1, x2):
     noise_a = x2
 
     c_pid = controller.PIDController()
-    c_deep = controller.MetaAdaptDeep(eta_a_base=0.005, eta_A_base=0.05)
-    c_ood = controller.MetaAdaptOoD(eta_a_base=0.005, eta_A_base=0.05, noise_a=noise_a, noise_x=noise_x)
+    c_deep = controller.MetaAdaptDeep(eta_a_base=0.01, eta_A_base=0.05)
+    c_ood = controller.MetaAdaptOoD(eta_a_base=0.01, eta_A_base=0.05, noise_a=noise_a, noise_x=noise_x)
     c_linear = controller.MetaAdaptLinear()
+    c_NF = controller.NeuralFly()
     q_pid = quadsim.Quadrotor()
     q_deep = quadsim.Quadrotor()
     q_ood = quadsim.Quadrotor()
     q_linear = quadsim.Quadrotor()
+    q_NF = quadsim.Quadrotor()
 
-    q_rl = quadsim.Quadrotor()
-    c_rl = controller.RLController(q_rl)
-    c_rl.train()
+    # q_rl = quadsim.Quadrotor()
+    # c_rl = controller.RLController(q_rl)
+    # c_rl.train()
 
-    train(c_deep, q_deep)
-    train(c_ood, q_ood)
+    train(c_deep, q_deep, "OMAC(deep)")
+    train(c_ood, q_ood, "OoD-Control")
+    train(c_NF, q_NF, "Neural-Fly")
     
-    test(c_rl, q_rl, "RL", False)
+    # test(c_rl, q_rl, "RL", False)
     test(c_pid, q_pid, "PID")
     test(c_linear, q_linear, "Linear")
     test(c_deep, q_deep, "OMAC(deep)", False)
     test(c_ood, q_ood, "OoD-Control", False)
+    test(c_NF, q_NF, "Neural-Fly", False)
 
 if __name__ == '__main__':
     t = trajectory.hover([0,0,0])

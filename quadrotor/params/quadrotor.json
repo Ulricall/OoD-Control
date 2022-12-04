@@ -32,7 +32,7 @@
     "motor_max_speed": 1000.0,
     "motor_min_speed": 0.0,
     "t_start": 0.0,
-    "t_stop": 10,
+    "t_stop": 20,
     "dt": 0.001,
     "dt_posctrl": 0.02,
     "dt_attctrl": 0.001,
