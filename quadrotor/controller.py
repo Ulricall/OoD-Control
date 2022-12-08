@@ -229,7 +229,7 @@ class PIDController(Controller):
         q_yaw_to_body = rowan.from_axis_angle(unit_rotation_axis, rotation_angle)
 
         q_r = rowan.multiply(q_world_to_yaw, q_yaw_to_body)
-        return q_r
+        return rowan.normalize(q_r)
     
     def get_Fr(self, X, imu, pd, vd, ad, meta_adapt_trigger):
         p_error = X[0:3] - pd
