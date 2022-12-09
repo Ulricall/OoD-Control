@@ -3,17 +3,18 @@ import numpy as np
 class hover():
     def __init__(self, pd=np.zeros(3)):
         self.pd = pd
+        self.name = 'hover'
     def __call__(self, t):
         vd = ad = np.zeros(3)
         return self.pd, vd, ad
 
 class fig8():
-    _name = 'figure-8'
     def __init__(self, T=10., dir1=(2., 2., 0.), dir2=(0., 0., 1.)):
         self.const = 1/T
         self.w = self.const*2*np.pi
         self.dir1 = np.array(dir1)
         self.dir2 = np.array(dir2)
+        self.name = 'fig8'
 
     def __call__(self, t):
         pd =                np.sin(self.w*t) * self.dir1 +                 np.sin(2*self.w*t) * self.dir2
@@ -27,6 +28,7 @@ class sin_forward():
         self.A = A
         self.Vy = Vy
         self.Vz = Vz
+        self.name = 'sin'
     
     def __call__(self,t):
         pd = np.array((self.A*np.sin(self.w*t), self.Vy*t, self.Vz*t))
@@ -40,6 +42,7 @@ class spiral_up():
         self.R = R
         self.Vr = Vr
         self.Vz = Vz
+        self.name = 'spiral'
     
     def __call__(self, t):
         pd = self.R*np.array((np.sin(self.w*t), np.cos(self.w*t)-1, self.Vz*t/self.R))

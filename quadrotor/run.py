@@ -30,7 +30,7 @@ def test(C, Q, Name, reset_control=True):
         log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
         log['p'] = log['X'][:, 0:3]
         squ_error = np.sum((log['p']-log['pd'])**2, 1)
-        np.save("logs/"+Name+"_"+str(round), log['p'])
+        np.save("logs/"+t.name+'/'+Name+"_"+str(round), log['p'])
         #rmse = np.sqrt(np.mean(squ_error))
         ace_error = np.mean(np.sqrt(squ_error))
         ace_error_list[round] = ace_error
@@ -68,7 +68,7 @@ def objfunction(x1, x2):
     test(c_NF, q_NF, "Neural-Fly", False)
 
 if __name__ == '__main__':
-    t = trajectory.fig8()
+    t = trajectory.hover()
     for noise_a in [0.01]:
         for noise_x in [0.01]:
             loss = objfunction(noise_x, noise_a)
