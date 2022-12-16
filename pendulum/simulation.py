@@ -6,6 +6,8 @@ import json
 
 DEFAULT_PARAM_FILE = pkg_resources.resource_filename(__name__, 'params/pendulum.json')
 
+standard = controller.PIDController()
+
 def readparamfile(filename, params=None):
     if params is None:
         params = {}
@@ -42,9 +44,9 @@ class Pendulum:
             pass
         else:
             Xdot = self.f(self.state)
-            self.state += Xdot * self.dt
             F_gt = self.get_wind_force()
             self.controller.inner_adapt(self.state, F_gt)
+            self.state += Xdot * self.dt
     
     def run(self, init_theta=0., init_dtheta=0., duration=30, Wind=None):
         log = []
@@ -54,10 +56,13 @@ class Pendulum:
         self.state = np.array([init_theta, init_dtheta], dtype=float)
 
         t = 0
+        Log = []
+        logu = []
         while (t < duration):
             #print(self.state)
             self.u = self.controller(self.state)
-            log.append(self.state)
+            logu.append([self.u-standard(self.state), self.get_wind_force()])
+            Log.append(self.state.tolist())
             self.step()
             t += self.dt
             if (t - self.last_wind_state > self.params['wind_update_period']):
@@ -67,5 +72,5 @@ class Pendulum:
                     self.controller.meta_adapt()
                 else:
                     pass
-        
-        return np.array(log)
+        #print(Log)
+        return np.array(Log), np.array(logu)

@@ -20,6 +20,14 @@ class Controller():
     def __call__(self, state) :
         raise NotImplementedError
 
+# class RL():
+#     def __init__(self):
+#         self.P = 3
+#         self.D = 3
+#         self.I = 0
+#         self.m = self.l = 1
+#         self.g = 9.81
+
 class PIDController(Controller):
     def __init__(self):
         self.integral = 0
@@ -49,8 +57,10 @@ class MetaAdapt(PIDController):
 class MetaAdaptLinear(MetaAdapt):
     def __init__(self, eta_a=0.01, eta_A=0.01):
         super().__init__()
+        setup_seed(345)
         self.W = np.random.uniform(-1, 1, size=(20,2))
-        self.a = np.random.uniform(-1, 1, size=(20))
+        #self.a = np.random.uniform(-1, 1, size=(20))
+        self.a = np.zeros(20)
         self.b = np.random.uniform(-1, 1, size=(20))
         self.sub_step = 0
         self.eta_a = eta_a
@@ -148,3 +158,41 @@ class MetaAdaptOoD(MetaAdaptDeep):
         loss.backward()
         self.optimizer.step()
         self.batch = []
+
+class NeuralFly(MetaAdaptDeep):
+    class H(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = spectral_norm(nn.Linear(20,30))
+            self.fc2 = spectral_norm(nn.Linear(30,3))
+        def forward(self, x):
+            x = F.relu(self.fc1(x))
+            return self.fc2(x)
+
+    def __init__(self, eta_a=0.01, eta_A=0.01):
+        super().__init__(eta_a=eta_a, eta_A=eta_A)
+        self.wind_idx = 0
+        self.h = self.H()
+        self.h_optimizer = optim.Adam(params=self.h.parameters(), lr=0.1)
+        self.h_loss = nn.CrossEntropyLoss()
+
+    def meta_adapt(self):
+        self.inner_adapt_count = 0
+        self.optimizer.zero_grad()
+        loss = 0
+        target = torch.tensor([self.wind_idx], dtype=int)
+        for X, a, y in self.batch:
+            temp = torch.dot(self.phi(torch.from_numpy(X).float()), torch.from_numpy(a).float())
+            loss += self.loss(temp, torch.tensor(y, dtype=torch.float32))
+        loss.backward()
+        self.optimizer.step()
+
+        if (np.random.uniform(0,1) < 0.5):
+            loss_h = 0
+            self.h_optimizer.zero_grad()
+            for X, y, a in self.batch:
+                phi = self.phi(torch.from_numpy(X).float()).detach()
+                h = self.h(phi)
+                loss_h += self.h_loss(h.unsqueeze(0), target)
+            loss_h.backward()
+            self.h_optimizer.step()
