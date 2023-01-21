@@ -10,13 +10,16 @@ import torch.optim as optim
 from torch.nn.utils import spectral_norm
 import copy
 from tqdm import tqdm
+import trajectory
 
 torch.set_default_tensor_type('torch.DoubleTensor')
 
 def setup_seed(seed):
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+    torch.backends.cudnn.deterministic = True
 
 DEFAULT_CONTROL_PARAM_FILE = pkg_resources.resource_filename(__name__, 'params/controller.json')
 DEFAULT_PX4_PARAM_FILE = pkg_resources.resource_filename(__name__, 'params/px4.json')
@@ -138,11 +141,13 @@ class RLController():
         self.params = readparamfile(DEFAULT_QUAD_PARAMETER_FILE)
 
         self.phi = self.Phi()
+        self.trace = None
     
-    def R(self, X, u):
-        return -self.alpha_x*(X[0]**2) - self.alpha_y*(X[1]**2) - self.alpha_z*\
-            (X[2]**2) - self.alpha_xdot*(X[7]**2) - self.alpha_ydot*(X[8]**2) -\
-            self.alpha_zdot*(X[9]**2) - self.alpha_w*np.linalg.norm(X[10:13],2)\
+    def R(self, X, u, t):
+        pd, vd, ad = self.trace(t)
+        return -self.alpha_x*((X[0]-pd[0])**2) - self.alpha_y*((X[1]-pd[1])**2) - self.alpha_z*\
+            ((X[2]-pd[2])**2) - self.alpha_xdot*((X[7]-vd[0])**2) - self.alpha_ydot*((X[8]-vd[1])**2) -\
+            self.alpha_zdot*((X[9]-vd[2])**2) - self.alpha_w*np.linalg.norm(X[10:13],2)\
             - 0.1 * np.sum(u ** 2)
     
     def calculate_reward(self):
@@ -159,7 +164,7 @@ class RLController():
                 u = self.getu(X)
                 # print(u)
                 (X, t, Z, Xdot) = self.Q.step(X, u, t, dt)
-                reward += gamma * self.R(X, u)
+                reward += gamma * self.R(X, u, t)
                 gamma *= self.reward_delay
         return reward / 5
     
@@ -172,6 +177,7 @@ class RLController():
         reward = self.calculate_reward()
         for i in tqdm(range(3000)):
             # add random noise to the parameters
+            setup_seed(i+567)
             self.phi_copy = copy.deepcopy(self.phi)
             gassian_kernel = torch.distributions.Normal(0, 1)
             with torch.no_grad():

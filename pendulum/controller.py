@@ -5,6 +5,8 @@ from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 import torch.optim as optim
 import random
+from tqdm import tqdm
+import copy
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -20,13 +22,69 @@ class Controller():
     def __call__(self, state) :
         raise NotImplementedError
 
-# class RL():
-#     def __init__(self):
-#         self.P = 3
-#         self.D = 3
-#         self.I = 0
-#         self.m = self.l = 1
-#         self.g = 9.81
+class RL():
+    class Phi(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = nn.Linear(2,20)
+            self.fc2 = nn.Linear(20,1)
+        def forward(self, x):
+            x = F.relu(self.fc1(x))
+            return self.fc2(x)
+
+    def __init__(self):
+        self.m = self.l = 1
+        self.g = 9.81
+        self.phi = self.Phi()
+        self.reward_delay = 0.95
+    
+    def get_wind_force(self, X, v_w):
+        print(X)
+        v_x = self.l * X[1] * np.cos(X[0])
+        v_y = self.l * X[1] * np.sin(X[0])
+        R = np.array([v_w[0] - v_x, v_w[1]-v_y])
+        F = 0.3 * np.linalg.norm(R) * R
+        return self.l * np.sin(X[0]) * F[1] + self.l * np.cos(X[0]) * F[0] - 0.5*X[1]
+    
+    def f(self, X, u, v):
+        F_wind = self.get_wind_force(X, v)
+        return np.array([X[1], (u+F_wind)/(self.m * self.l**2) + self.g/self.l * np.sin(X[0])])
+    
+    def calculate_reward(self):
+        dt = 0.1
+        reward = 0
+        for T in range(5):
+            gamma = 1
+            t = 0
+            vwind = np.random.normal(0, 1, (20,2))
+            X = np.zeros(2)
+            for i in range(50):
+                u = self.phi(torch.from_numpy(X).float()).item()
+                X += self.f(X, u, vwind[int(t),:]) * dt
+                reward += gamma * (-X[0] - X[1])
+                gamma *= self.reward_delay
+                t += dt
+        return reward / 5
+    
+    def train(self):
+        reward = self.calculate_reward()
+        for i in tqdm(range(3000)):
+            self.phi_copy = copy.deepcopy(self.phi)
+            gassian_kernel = torch.distributions.Normal(0, 1)
+            with torch.no_grad():
+                for param in self.phi.parameters():
+                    param.mul_(torch.exp(gassian_kernel.sample(param.size())))
+            new_reward = self.calculate_reward()
+            if (new_reward < reward):
+                self.phi = self.phi_copy
+    
+    def __call__(self, state):
+        return self.phi(torch.from_numpy(state).float()).item()
+    
+    def inner_adapt(self, _, __):
+        pass
+    def meta_adapt(self):
+        pass
 
 class PIDController(Controller):
     def __init__(self):

@@ -7,8 +7,10 @@ import random
 
 def setup_seed(seed):
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+    torch.backends.cudnn.deterministic = True
 
 def train(C, Q, Name=""):
     print("Training " + Name)
@@ -17,7 +19,6 @@ def train(C, Q, Name=""):
         if (Name == 'Neural-Fly'):
             C.wind_idx = i
         Wind_Velocity = np.random.normal(loc=0, scale=0.5*(i+1), size=(20,3))
-        #Wind_Velocity = np.random.uniform(low=-3*(i+1), high=3*(i+1), size=(20,3))
         Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity)
 
 def test(C, Q, Name, reset_control=True):
@@ -26,11 +27,12 @@ def test(C, Q, Name, reset_control=True):
     ace_error_list = np.empty(10)
     for round in range(10):
         setup_seed(234+round*11)
-        Wind_Velocity = np.random.uniform(low=-12, high=12, size=(20,3))
+        #Wind_Velocity = np.random.uniform(low=-12, high=12, size=(20,3))
+        Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))
         log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
         log['p'] = log['X'][:, 0:3]
         squ_error = np.sum((log['p']-log['pd'])**2, 1)
-        np.save("logs/"+t.name+'/'+Name+"_"+str(round), log['p'])
+        #np.save("logs/"+t.name+'/'+Name+"_"+str(round), log['p'])
         #rmse = np.sqrt(np.mean(squ_error))
         ace_error = np.mean(np.sqrt(squ_error))
         ace_error_list[round] = ace_error
@@ -54,21 +56,23 @@ def objfunction(x1, x2):
 
     # q_rl = quadsim.Quadrotor()
     # c_rl = controller.RLController(q_rl)
+    # setup_seed(11)
+    # c_rl.trace = t
     # c_rl.train()
     # test(c_rl, q_rl, "RL", False)
 
-    train(c_deep, q_deep, "OMAC(deep)")
+    #train(c_deep, q_deep, "OMAC(deep)")
     train(c_ood, q_ood, "OoD-Control")
-    train(c_NF, q_NF, "Neural-Fly")
+    #train(c_NF, q_NF, "Neural-Fly")
     
-    test(c_pid, q_pid, "PID")
-    test(c_linear, q_linear, "Linear")
-    test(c_deep, q_deep, "OMAC(deep)", False)
+    #test(c_pid, q_pid, "PID")
+    #test(c_linear, q_linear, "Linear")
+    #test(c_deep, q_deep, "OMAC(deep)", False)
     test(c_ood, q_ood, "OoD-Control", False)
-    test(c_NF, q_NF, "Neural-Fly", False)
+    #test(c_NF, q_NF, "Neural-Fly", False)
 
 if __name__ == '__main__':
-    t = trajectory.hover()
-    for noise_a in [0.01]:
-        for noise_x in [0.01]:
+    t = trajectory.fig8()
+    for noise_a in [0.2]:
+        for noise_x in [0.2]:
             loss = objfunction(noise_x, noise_a)

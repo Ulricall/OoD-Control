@@ -29,7 +29,7 @@ class Pendulum:
         wind_x = self.Wind[self.total_wind][0]
         wind_y = self.Wind[self.total_wind][1]
         v_x = self.l * self.state[1] * np.cos(self.state[0])
-        v_y = self.l * self.state[1] * np.sin(self.state[1])
+        v_y = self.l * self.state[1] * np.sin(self.state[0])
         R = np.array([wind_x - v_x, wind_y-v_y])
         F = self.params['Cd'] * np.linalg.norm(R) * R
         return self.l * np.sin(self.state[0]) * F[1] + self.l * np.cos(self.state[0]) * F[0] \

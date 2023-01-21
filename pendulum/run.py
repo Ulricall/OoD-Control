@@ -24,7 +24,8 @@ def test(Q, Name):
     losses = []
     for i in range(10):
         setup_seed(100+i)
-        Wind = np.random.uniform(low=-4, high=4, size=(20,2))
+        Wind = np.random.uniform(low=-12, high=12, size=(20,2))
+        #Wind = np.random.normal(loc=0, scale=1, size=(20,2))
         log, logf = Q.run(Wind=Wind)
         losses.append(np.mean(np.abs(log[:,0])))
         np.save('logs/'+Name+'_'+str(i)+'.npy', log)
@@ -32,7 +33,7 @@ def test(Q, Name):
         #print(losses[-1])
     #print(losses)
     losses = np.array(losses)
-    print("ACE Error: %.3f(%.3f)" % (np.mean(losses), np.std(losses, ddof=1)))
+    print(Name, "ACE Error: %.3f(%.3f)" % (np.mean(losses), np.std(losses, ddof=1)))
 
 def objfunc(noise_x, noise_a):
     c_pid = controller.PIDController()
@@ -45,6 +46,11 @@ def objfunc(noise_x, noise_a):
     q_ood = simulation.Pendulum(c_ood)
     c_neural = controller.NeuralFly(eta_a=0.04, eta_A=0.02)
     q_neural = simulation.Pendulum(c_neural)
+
+    # c_rl = controller.RL()
+    # q_rl = simulation.Pendulum(c_rl)
+    # c_rl.train()
+    #test(q_rl, 'RL')
 
     train(q_deep)
     train(q_ood)
