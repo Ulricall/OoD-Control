@@ -26,7 +26,7 @@ def test(Q, Name):
     losses = []
     for i in range(10):
         setup_seed(100+i)
-        Wind = np.random.uniform(low=-12, high=12, size=(20,2))
+        Wind = np.random.uniform(low=-Wind_velo, high=Wind_velo, size=(20,2))
         #Wind = np.random.normal(loc=0, scale=1, size=(20,2))
         log, logf = Q.run(Wind=Wind)
         losses.append(np.mean(np.abs(log[:,0])))
@@ -71,7 +71,16 @@ def objfunc(noise_x, noise_a):
 parser = argparse.ArgumentParser()
 if __name__=='__main__':
     parser.add_argument('--logs', type=int, default=1)
+    parser.add_argument('--wind', type=str, default='gale')
     args = parser.parse_args()
+    if (args.wind=='breeze'):
+        Wind_velo = 4
+    elif (args.wind=='strong_breeze'):
+        Wind_velo = 8
+    elif (args.wind=='gale'):
+        Wind_velo = 12
+    else:
+        raise NotImplementedError
     for noise_x in [0.0003]:
         for noise_a in [0.0003]:
             objfunc(noise_x, noise_a)

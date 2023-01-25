@@ -29,7 +29,7 @@ def test(C, Q, Name, reset_control=True):
     ace_error_list = np.empty(10)
     for round in range(10):
         setup_seed(234+round*11)
-        Wind_Velocity = np.random.uniform(low=-12, high=12, size=(20,3))
+        Wind_Velocity = np.random.uniform(low=-Wind_velo, high=Wind_velo, size=(20,3))
         #Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))
         log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
         log['p'] = log['X'][:, 0:3]
@@ -80,7 +80,17 @@ parser = argparse.ArgumentParser()
 if __name__ == '__main__':
     parser.add_argument('--logs', type=int, default=1)
     parser.add_argument('--trace', type=str, default='hover')
+    parser.add_argument('--wind', type=str, default='gale')
     args = parser.parse_args()
+    if (args.wind=='breeze'):
+        Wind_velo = 4
+    elif (args.wind=='strong_breeze'):
+        Wind_velo = 8
+    elif (args.wind=='gale'):
+        Wind_velo = 12
+    else:
+        raise NotImplementedError
+
     if (args.trace=='hover'):
         t = trajectory.hover()
     elif (args.trace=='fig8'):
