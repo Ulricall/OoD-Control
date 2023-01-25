@@ -3,6 +3,8 @@ import controller
 import simulation
 import numpy as np
 import random
+import argparse
+import os
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -28,10 +30,13 @@ def test(Q, Name):
         #Wind = np.random.normal(loc=0, scale=1, size=(20,2))
         log, logf = Q.run(Wind=Wind)
         losses.append(np.mean(np.abs(log[:,0])))
-        np.save('logs/'+Name+'_'+str(i)+'.npy', log)
-        np.save('F_logs/'+Name+'_'+str(i)+'.npy', logf)
-        #print(losses[-1])
-    #print(losses)
+        if (args.logs==1):
+            if not os.path.exists('./logs'):
+                os.makedirs('./logs')
+            if not os.path.exists('./F_logs'):
+                os.makedirs('./F_logs')            
+            np.save('logs/'+Name+'_'+str(i)+'.npy', log)
+            np.save('F_logs/'+Name+'_'+str(i)+'.npy', logf)
     losses = np.array(losses)
     print(Name, "ACE Error: %.3f(%.3f)" % (np.mean(losses), np.std(losses, ddof=1)))
 
@@ -63,7 +68,10 @@ def objfunc(noise_x, noise_a):
     test(q_ood, 'OoDControl')
     test(q_neural, 'NeuralFly')
 
+parser = argparse.ArgumentParser()
 if __name__=='__main__':
+    parser.add_argument('--logs', type=int, default=1)
+    args = parser.parse_args()
     for noise_x in [0.0003]:
         for noise_a in [0.0003]:
             objfunc(noise_x, noise_a)

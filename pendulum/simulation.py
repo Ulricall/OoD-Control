@@ -41,7 +41,13 @@ class Pendulum:
     
     def step(self):
         if self.params['integration_method'] == 'rk4':
-            pass
+            k1 = self.f(self.state)
+            k2 = self.f(self.state + k1 * self.dt/2)
+            k3 = self.f(self.state + k2 * self.dt/2)
+            k4 = self.f(self.state + k3 * self.dt)
+            F_gt = self.get_wind_force()
+            self.controller.inner_adapt(self.state, F_gt)
+            self.state += (k1 + k2*2 + k3*2 + k4*2) * self.dt / 6
         else:
             Xdot = self.f(self.state)
             F_gt = self.get_wind_force()

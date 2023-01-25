@@ -4,6 +4,8 @@ import trajectory
 import numpy as np
 import torch
 import random
+import argparse
+import os
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -27,13 +29,16 @@ def test(C, Q, Name, reset_control=True):
     ace_error_list = np.empty(10)
     for round in range(10):
         setup_seed(234+round*11)
-        #Wind_Velocity = np.random.uniform(low=-12, high=12, size=(20,3))
-        Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))
+        Wind_Velocity = np.random.uniform(low=-12, high=12, size=(20,3))
+        #Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))
         log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
         log['p'] = log['X'][:, 0:3]
         squ_error = np.sum((log['p']-log['pd'])**2, 1)
-        #np.save("logs/"+t.name+'/'+Name+"_"+str(round), log['p'])
-        #rmse = np.sqrt(np.mean(squ_error))
+        if (args.logs):
+            dir = 'logs/'+t.name
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+            np.save(dir+'/'+Name+'_'+str(round), log['p'])
         ace_error = np.mean(np.sqrt(squ_error))
         ace_error_list[round] = ace_error
     print("*******",Name,"*******")
@@ -61,18 +66,31 @@ def objfunction(x1, x2):
     # c_rl.train()
     # test(c_rl, q_rl, "RL", False)
 
-    #train(c_deep, q_deep, "OMAC(deep)")
+    train(c_deep, q_deep, "OMAC(deep)")
     train(c_ood, q_ood, "OoD-Control")
-    #train(c_NF, q_NF, "Neural-Fly")
+    train(c_NF, q_NF, "Neural-Fly")
     
-    #test(c_pid, q_pid, "PID")
-    #test(c_linear, q_linear, "Linear")
-    #test(c_deep, q_deep, "OMAC(deep)", False)
+    test(c_pid, q_pid, "PID")
+    test(c_linear, q_linear, "Linear")
+    test(c_deep, q_deep, "OMAC(deep)", False)
     test(c_ood, q_ood, "OoD-Control", False)
-    #test(c_NF, q_NF, "Neural-Fly", False)
+    test(c_NF, q_NF, "Neural-Fly", False)
 
+parser = argparse.ArgumentParser()
 if __name__ == '__main__':
-    t = trajectory.fig8()
-    for noise_a in [0.2]:
-        for noise_x in [0.2]:
+    parser.add_argument('--logs', type=int, default=1)
+    parser.add_argument('--trace', type=str, default='hover')
+    args = parser.parse_args()
+    if (args.trace=='hover'):
+        t = trajectory.hover()
+    elif (args.trace=='fig8'):
+        t = trajectory.fig8()
+    elif (args.trace=='spiral'):
+        t = trajectory.spiral_up()
+    elif (args.trace=='sin'):
+        t = trajectory.sin_forward()
+    else:
+        raise NotImplementedError
+    for noise_a in [0.01]:
+        for noise_x in [0.01]:
             loss = objfunction(noise_x, noise_a)

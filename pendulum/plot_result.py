@@ -4,7 +4,7 @@ import numpy as np
 def load_data(Name):
     logs = []
     for i in range(10):
-        log = np.load('F_logs/'+Name+'_'+str(i)+'.npy', allow_pickle=True)
+        log = np.load('logs/'+Name+'_'+str(i)+'.npy', allow_pickle=True)
         logs.append(log)
     logs = np.array(logs)
     return np.sum(logs, axis=0) / 10
@@ -19,9 +19,9 @@ def Plot(Name):
     plt.plot(t, log[:,1], '--', c='b', label=r'$f$')
     #plt.plot(t, zero, '--', c='k')
     plt.legend()
-    plt.savefig('pics/'+Name+'.eps')
-    plt.show()
-    plt.close()
+    plt.savefig('pics/'+Name+'.png')
+    # plt.show()
+    # plt.close()
 
 if __name__ == '__main__':
     for Name in ['OoDControl', 'PID', 'OMAC(deep)', 'NeuralFly', 'Linear']:
