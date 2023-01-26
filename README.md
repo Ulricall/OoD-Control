@@ -30,7 +30,7 @@ python run.py --trace fig8
 #assign a wind condition
 python run.py --wind strong_breeze
 ```
-Trajectory can be chosen from `{fig8, hover, sin, spiral}`
-After the logentry is created, you can run `plot_result.py --trace {fig8, hover, sin, spiral}` to create 3D traces `./traces` and 2D projection in `./projections`. 
+Trajectory can be chosen from `{fig8, hover, sin, spiral}`.
+After the logentry is created, you can run `plot_result.py --trace {fig8, hover, sin, spiral}` to create 3D traces in `./traces` and 2D projection in `./projections`. 
 
 For both experiments, the argument parse `--wind {breeze, strong_breeze, gale}` is used to determine the wind velocity in the experiment.
