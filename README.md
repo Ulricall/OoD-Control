@@ -6,7 +6,7 @@ We implement our algorithm and baseline algorithms on two models: inverted pendu
 
 To simply run the experiment under a certain setting, just run `run.py` for the complete training and testing task. You can also run the experiment under different settings.
 Examples:
-```
+```python
 # simply run
 python run.py
 # assign a wind condition
@@ -20,7 +20,7 @@ After the logs are created, you can run `plot_result.py` to plot the results in 
 `cd quadrotor` for quadrotor experiment.
 
 Similarly, run `run.py` for simple start. More settings are shown in following examples.
-```
+```python
 # simply run
 python run.py
 # do not keep the log
