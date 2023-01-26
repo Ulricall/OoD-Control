@@ -1,4 +1,4 @@
-# OoD_Control: Out-of-Distribution Generalization for Flight Control
+# OoD-Control: Out-of-Distribution Generalization for Flight Control
 We implement our algorithm and baseline algorithms on two models: inverted pendulum and quadrotor.
 
 ## Inverted pendulum
