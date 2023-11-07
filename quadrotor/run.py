@@ -7,7 +7,6 @@ import random
 import argparse
 import os
 from bayes_opt import BayesianOptimization
-from bayes_opt import UtilityFunction
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -127,8 +126,16 @@ if __name__ == '__main__':
         raise NotImplementedError
     
     # contrast_algo()
-    optimizer = BayesianOptimization(PIDobjfunc, {"p":(4, 8), 'i':(0,1), 'd':(2,4)})
-    optimizer.maximize(init_points=2, n_iter=5, kappa=5)
+    optimizer = BayesianOptimization(
+                    f=PIDobjfunc, 
+                    pbounds={"p":(4, 8), 'i':(0,1), 'd':(2,4)},
+                    verbose=2,
+                    random_state=1,
+                )
+    optimizer.maximize(
+                    init_points=2, 
+                    n_iter=5,
+                )
     best_p = optimizer.max['params']
     best_result = optimizer.max['target']
     print(best_p)
