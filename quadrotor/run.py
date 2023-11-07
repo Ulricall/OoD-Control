@@ -128,13 +128,13 @@ if __name__ == '__main__':
     # contrast_algo()
     optimizer = BayesianOptimization(
                     f=PIDobjfunc, 
-                    pbounds={"p":(4, 8), 'i':(0,1), 'd':(2,4)},
+                    pbounds={"p":(3, 9), 'i':(0,2), 'd':(1,5)},
                     verbose=2,
                     random_state=1,
                 )
     optimizer.maximize(
                     init_points=2, 
-                    n_iter=5,
+                    n_iter=10,
                 )
     best_p = optimizer.max['params']
     best_result = optimizer.max['target']
