@@ -190,12 +190,22 @@ class RLController():
                 self.phi = self.phi_copy
 
 class PIDController(Controller):
-    def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, ctrlparamfile=DEFAULT_CONTROL_PARAM_FILE):
+    def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, ctrlparamfile=DEFAULT_CONTROL_PARAM_FILE, given_pid=False, p=0, i=0, d=0):
         super().__init__(quadparamfile=quadparamfile)
         self.params = readparamfile(filename=ctrlparamfile, params=self.params)
+        self.given_pid = given_pid
+        if (given_pid):
+            self.p = [p,p,p]
+            self.i = [i,i,i]
+            self.d = [d,d,d]
         #print(ctrlparamfile)
 
     def calculate_gains(self):
+        if (self.given_pid):
+            self.params['K_i'] = np.diag(self.i)
+            self.params['K_p'] = np.diag(self.p)
+            self.params['K_d'] = np.diag(self.d)
+
         self.params['K_i'] = np.array(self.params['K_i'])
         self.params['K_p'] = np.diag([self.params['Lam_xy']*self.params['K_xy'],
                        self.params['Lam_xy']*self.params['K_xy'],
@@ -327,13 +337,18 @@ class MetaAdaptLinear(MetaAdapt):
         self.dim_a = dim_a - dim_a % 3
         self.eta_a_base = eta_a_base
         self.eta_A_base = eta_A_base
+        self.state = 'train'
     
     def reset_controller(self):
         super().reset_controller()
         self.dim_A = dim_A = int(self.dim_a / 3)
+        # setup_seed()
         self.W = np.random.uniform(low=-1, high=1, size=(dim_A, 13))
-        self.a = np.random.uniform(low=-1, high=1, size=(self.dim_a))
+        self.a = np.random.normal(loc=0, scale=1, size=(self.dim_a))
+        # self.a = np.zeros(shape=self.dim_a)
         self.b = np.random.uniform(low=-1, high=1, size=(dim_A))
+        
+        # self.b = np.zeros(shape=[dim_A])
         self.inner_adapt_count = 0
         self.meta_adapt_count = 0
         self.batch = []
@@ -342,7 +357,7 @@ class MetaAdaptLinear(MetaAdapt):
         return np.kron(np.eye(3), self.W @ X + self.b)
 
     def get_f_hat(self, X):
-        return self.get_Y(X) @ self.a
+        return self.get_Y(X) @ (self.a / np.linalg.norm(self.a))
     
     def update_batch(self, X, fhat, y):
         self.batch.append((X, fhat, y, self.a.copy()))
@@ -351,6 +366,8 @@ class MetaAdaptLinear(MetaAdapt):
         self.inner_adapt_count += 1
         eta_a = self.eta_a_base / np.sqrt(self.inner_adapt_count)
         self.a -= eta_a * 2 * (fhat - y).transpose() @ self.get_Y(X)
+        if (np.linalg.norm(self.a)>20):
+            self.a = self.a / np.linalg.norm(self.a) * 20
 
     def meta_adapt(self):
         self.inner_adapt_count = 0
@@ -365,9 +382,9 @@ class MetaAdaptLinear(MetaAdapt):
 class MetaAdaptDeep(MetaAdapt):
     # f_hat = phi(x)^T * a
     class Phi(nn.Module):
-        def __init__(self, dim_kernel, layer_sizes):
+        def __init__(self, input_kernel, dim_kernel, layer_sizes):
             super().__init__()
-            self.fc1 = spectral_norm(nn.Linear(13, layer_sizes[0]))
+            self.fc1 = spectral_norm(nn.Linear(input_kernel, layer_sizes[0]))
             self.fc2 = spectral_norm(nn.Linear(layer_sizes[0], layer_sizes[1]))
             self.fc3 = spectral_norm(nn.Linear(layer_sizes[1], dim_kernel))
         def forward(self, x):
@@ -388,7 +405,7 @@ class MetaAdaptDeep(MetaAdapt):
     def reset_controller(self):
         super().reset_controller()
         self.a = np.zeros(self.dim_a)
-        self.phi = self.Phi(dim_kernel=self.dim_a//3, layer_sizes=self.layer_sizes)
+        self.phi = self.Phi(input_kernel=13, dim_kernel=self.dim_a//3, layer_sizes=self.layer_sizes)
         self.optimizer = optim.Adam(self.phi.parameters(), lr=self.eta_A_base)
         self.inner_adapt_count = 0
         self.batch = []
@@ -456,16 +473,16 @@ class NeuralFly(MetaAdaptDeep):
             x = self.fc3(x)
             return x
 
-    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.001, eta_A_base=0.001, lr=5e-4):
+    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.01, eta_A_base=0.001):
         super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, eta_A_base=eta_A_base)
         self.wind_idx = 0
-        self.alpha = 0.01
-        self.lr = lr
+        self.alpha = 0.5
+        # self.lr = lr
 
     def reset_controller(self):
         super().reset_controller()
         self.h = self.H(start_kernel = self.dim_a//3, dim_kernel=3, layer_sizes=self.layer_sizes)
-        self.h_optimizer = optim.Adam(params=self.h.parameters(), lr=self.lr)
+        self.h_optimizer = optim.Adam(params=self.h.parameters(), lr=0.1)
         self.h_loss = nn.CrossEntropyLoss()
     
     def meta_adapt(self):
@@ -473,16 +490,12 @@ class NeuralFly(MetaAdaptDeep):
         self.optimizer.zero_grad()
         loss = 0
         target = torch.tensor([self.wind_idx], dtype=int)
-        # print(target)
         for X, y, a in self.batch:
             phi = torch.kron(torch.eye(3), self.phi(torch.from_numpy(X)))
-            # print(self.h(self.phi(torch.from_numpy(X))).unsqueeze(0))
             loss += self.loss(torch.matmul(phi, torch.from_numpy(a)), torch.from_numpy(y)) \
-                - self.alpha * self.h_loss(self.h(self.phi(torch.from_numpy(X))).unsqueeze(0), target)
+                 - self.alpha * self.h_loss(self.h(self.phi(torch.from_numpy(X))).unsqueeze(0), target).detach()
         loss.backward()
         self.optimizer.step()
-
-        #ActorCritic, PPO
 
         if (np.random.uniform(0,1) < 0.5):
             loss_h = 0
@@ -493,3 +506,40 @@ class NeuralFly(MetaAdaptDeep):
                 loss_h += self.h_loss(h.unsqueeze(0), target)
             loss_h.backward()
             self.h_optimizer.step()
+        
+        self.batch = []
+
+class RealMachine(MetaAdaptOoD):
+    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.001, eta_A_base=0.001, noise_x=0.01, noise_a=0.01):
+        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, eta_A_base=eta_A_base)
+        self.noise_x = 0.01
+        self.noise_a = 0.01
+
+    def reset_controller(self):
+        super().reset_controller()
+        self.a = np.zeros(self.dim_a)
+        self.phi = self.Phi(input_kernel=7, dim_kernel=self.dim_a//3, layer_sizes=self.layer_sizes)
+        self.optimizer = optim.Adam(self.phi.parameters(), lr=self.eta_A_base)
+        self.inner_adapt_count = 0
+        self.batch = []
+    
+    def get_f_hat(self, X):
+        phi = self.get_phi(X[3:10])
+        return phi @ self.a
+    
+    def inner_adapt(self, X, fhat, y):
+        if (self.state=='test') : pass
+        self.a -= self.eta_a_base * 2 * (fhat - y).transpose() @ self.get_phi(X[3:10])
+
+    def meta_adapt(self):
+        self.optimizer.zero_grad()
+
+        loss = 0
+        for X, y, a in self.batch:
+            X = X + self.noise_x*np.random.normal(0,1,X.shape)
+            a = a + self.noise_a*np.random.normal(0,1,a.shape)
+            phi = torch.kron(torch.eye(3), self.phi(torch.from_numpy(X[3:10])))
+            loss += self.loss(torch.matmul(phi, torch.from_numpy(a)), torch.from_numpy(y))
+        loss.backward()
+        self.optimizer.step()
+        self.batch = []

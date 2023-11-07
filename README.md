@@ -1,6 +1,19 @@
 # OoD-Control: Out-of-Distribution Generalization for Flight Control
 We implement our algorithm and baseline algorithms on two models: inverted pendulum and quadrotor.
 
+## Environment preparation
+### Recommended environment
+```
+Environment:
+    Python: 3.9.13
+    Pytorch: 1.13.0
+    NumPy: 1.26.0
+    matplotlib: 3.8.0
+    bayesian-optimization: 1.4.3
+    tqdm: 4.65.0
+    rowan: 1.3.0.post1
+```
+
 ## Inverted pendulum
 `cd pendulum` for inverted pendulum experiment.
 
