@@ -87,11 +87,16 @@ class RL():
         pass
 
 class PIDController(Controller):
-    def __init__(self):
+    def __init__(self, given_pid=False, p=0, d=0, i=0):
         self.integral = 0
-        self.P = 3
-        self.D = 3
-        self.I = 0
+        if (not given_pid):
+            self.P = 3
+            self.D = 3
+            self.I = 0
+        else:
+            self.P = p
+            self.D = d
+            self.I = i
         self.m = self.l = 1
         self.g = 9.81
     
@@ -116,17 +121,17 @@ class MetaAdaptLinear(MetaAdapt):
     def __init__(self, eta_a=0.01, eta_A=0.01):
         super().__init__()
         setup_seed(345)
-        self.W = np.random.uniform(-1, 1, size=(20,2))
-        #self.a = np.random.uniform(-1, 1, size=(20))
-        self.a = np.zeros(20)
-        self.b = np.random.uniform(-1, 1, size=(20))
+        self.W = np.random.uniform(low=-1, high=1, size=(20,2))
+        self.a = np.random.normal(loc=0, scale=1, size=(20))
+        # self.a = np.zeros(shape=self.dim_a)
+        self.b = np.random.uniform(low=-1, high=1, size=(20))
         self.sub_step = 0
         self.eta_a = eta_a
         self.eta_A = eta_A
         self.batch = []
     
     def f_hat(self, state):
-        return np.dot(self.W @ state + self.b, self.a)
+        return np.dot(self.W @ state + self.b, (self.a / np.linalg.norm(self.a)))
     
     def inner_adapt(self, state, y):
         self.sub_step += 1
@@ -135,6 +140,8 @@ class MetaAdaptLinear(MetaAdapt):
             fhat = self.f_hat(state)
             self.a -= eta_a * 2 * (fhat-y) * (self.W @ state + self.b)
         self.batch.append((state, self.a, y))
+        if (np.linalg.norm(self.a)>20):
+            self.a = self.a / np.linalg.norm(self.a) * 20
     
     def meta_adapt(self):
         for X, a, y in self.batch:
@@ -208,8 +215,8 @@ class MetaAdaptOoD(MetaAdaptDeep):
         self.optimizer.zero_grad()
         loss = 0
         for X, a, y in self.batch:
-            X += np.random.normal(loc=0, scale=self.noise_x, size=X.shape)
-            a += np.random.normal(loc=0, scale=self.noise_a, size=a.shape)
+            X += self.noise_x * np.random.normal(loc=0, scale=1, size=X.shape)
+            # a += self.noise_a * np.random.normal(loc=0, scale=1, size=a.shape)
             temp = torch.dot(self.phi(torch.from_numpy(X).float()), torch.from_numpy(a).float())
             loss += self.loss(temp, torch.tensor(y, dtype=torch.float32))
         #print(loss)
@@ -254,3 +261,4 @@ class NeuralFly(MetaAdaptDeep):
                 loss_h += self.h_loss(h.unsqueeze(0), target)
             loss_h.backward()
             self.h_optimizer.step()
+        self.batch = []

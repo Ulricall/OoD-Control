@@ -126,3 +126,4 @@ cython_debug/
 
 # Logs
 logs/
+F_logs/
