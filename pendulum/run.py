@@ -21,7 +21,7 @@ def train(Q, Name=''):
         if (Name == 'Neural-Fly'):
             Q.controller.wind_idx = i
         setup_seed(i)
-        Wind = np.random.normal(loc=0, scale=1, size=(20,2))
+        Wind = np.random.gamma(shape=1., scale=1., size=(20,2)) # Training wind distributions
         log, logf = Q.run(Wind=Wind)
         losses.append(np.mean(np.abs(log[:,0])))
     return np.mean(np.array(losses))
@@ -31,8 +31,9 @@ def test(Q, Name):
     losses = []
     for i in range(10):
         setup_seed(100+i)
-        Wind = np.random.uniform(low=-Wind_velo, high=Wind_velo, size=(20,2))
-        #Wind = np.random.normal(loc=0, scale=1, size=(20,2))
+        Wind = np.random.uniform(low=-Wind_velo, high=0, size=(20,2)) # Test wind distributions
+        # Wind = np.random.uniform(low=-Wind_velo, high=Wind_velo, size=(20,2)) 
+        # Wind = np.random.normal(loc=0, scale=1, size=(20,2))
         log, logf = Q.run(Wind=Wind)
         losses.append(np.mean(np.abs(log[:,0])))
         if (args.logs==1):
@@ -52,7 +53,7 @@ def contrast_algos():
     c_linear = controller.MetaAdaptLinear(eta_a=0.04)
     q_linear = simulation.Pendulum(c_linear)
     c_deep = controller.MetaAdaptDeep(eta_a=0.04, eta_A=0.02)
-    q_deep = simulation.Pendulum(c_deep) 
+    q_deep = simulation.Pendulum(c_deep)
     c_neural = controller.NeuralFly(eta_a=0.04, eta_A=0.02)
     q_neural = simulation.Pendulum(c_neural)
 
@@ -60,7 +61,7 @@ def contrast_algos():
     # q_rl = simulation.Pendulum(c_rl)
     # c_rl.train()
     #test(q_rl, 'RL')
-         
+    
     train(q_deep)
     train(q_linear)
     train(q_neural)
@@ -95,8 +96,9 @@ if __name__=='__main__':
         Wind_velo = 12
     else:
         raise NotImplementedError
-    # contrast_algos()
-    # optimizer = BayesianOptimization(objfunc, {"noise_x":(0, 0.005)})
+    
+    contrast_algos()
+
     optimizer = BayesianOptimization(
                     f=PIDobjfunc, 
                     pbounds={"p":(2, 6), 'i':(0, 1), 'd':(2, 6)},
@@ -104,7 +106,7 @@ if __name__=='__main__':
                     random_state=1,
                 )
     optimizer.maximize(
-                init_points=2, 
+                init_points=2,
                 n_iter=10,
             )
     best_p = optimizer.max['params']
@@ -116,3 +118,19 @@ if __name__=='__main__':
     q_pid = simulation.Pendulum(c_pid)
     test_error = test(q_pid, 'PID')
     print(test_error)
+
+    optimizer_ood = BayesianOptimization(
+                    f=objfunc, 
+                    pbounds={"noise_x":(0, 0.005)},
+                    verbose=2,
+                    random_state=1,
+                )
+    optimizer_ood.maximize(
+                init_points=2,
+                n_iter=10,
+            )
+    
+    best_p_ood = optimizer.max['params']
+    best_result_ood = optimizer.max['target']
+    print(best_p_ood)
+    print(-best_result_ood)
