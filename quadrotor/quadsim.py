@@ -34,7 +34,7 @@ class Quadrotor():
         #self.params['process_noise_covariance'] = np.array(self.params['process_noise_covariance'])
         l_arm = self.params['l_arm']
         h = self.params['h']
-        self.r_arms = np.array(((l_arm, -l_arm, h), 
+        self.r_arms = np.array(((l_arm, -l_arm, h),
                                 (-l_arm, -l_arm, h),
                                 (-l_arm, l_arm, h),
                                 (l_arm, l_arm, h)))
@@ -61,8 +61,9 @@ class Quadrotor():
             aoa = np.arcsin(np.linalg.norm(Vz_B)/np.linalg.norm(Vinf_B))
             n = np.sqrt(Z / self.params['C_T']) 
             Fs_per_prop = self.params['C_s'] * self.params['rho'] * (n ** self.params['k1']) \
-                   * (np.linalg.norm(Vinf) ** (2 - self.params['k1'])) * (self.params['D'] ** (2 + self.params['k1'])) \
-                   * ((np.pi / 2) ** 2 - aoa ** 2) * (aoa + self.params['k2'])
+                     * (np.linalg.norm(Vinf) ** (2 - self.params['k1'])) * (self.params['D'] \
+                     ** (2 + self.params['k1'])) * ((np.pi / 2) ** 2 - aoa ** 2) \
+                     * (aoa + self.params['k2'])
             Fs_B = (Vs_B/np.linalg.norm(Vs_B)) * sum(Fs_per_prop)
 
             tau_s = np.zeros(3)
@@ -100,7 +101,7 @@ class Quadrotor():
             Z = u
         else:
             alpha_m = 1 - np.exp(-self.params['w_m'] * dt)
-            Z = alpha_m*u + (1-alpha_m)*Z
+            Z = alpha_m*u + (1 - alpha_m) * Z
         return np.maximum(np.minimum(Z, self.params['motor_max_speed']), self.params['motor_min_speed'])
 
     def step(self, X, u, t, dt, Z=None):
@@ -118,7 +119,7 @@ class Quadrotor():
             X = X + (k1 + 2*k2 + 2*k3 + k4)/6
         elif self.params['integration_method'] == 'euler':
             Z = self.update_motor_speed(Z=Z, u=u, dt=dt)
-            Xdot = self.f(X,Z,t)
+            Xdot = self.f(X, Z, t)
             X = X + dt * Xdot
         else:
             raise NotImplementedError
@@ -176,11 +177,13 @@ class Quadrotor():
         self.wind_count = 0
         self.VwindList = wind_list
 
-    def run(self, controller, trajectory=None, seed=None, wind_velocity_list=None, reset_control=True, Name=""):
+    def run(self, controller, trajectory=None, seed=None, wind_velocity_list=None, 
+            reset_control=True, Name=""):
         self.name = Name
         self.reset_status(wind_velocity_list)
         if (reset_control):
             controller.reset_controller()
-        log = list(tqdm(self.runiter(trajectory=trajectory, controller=controller), total=(self.params['t_stop']-self.params['t_start'])/self.params['dt_readout']))
+        log = list(tqdm(self.runiter(trajectory=trajectory, controller=controller), 
+                        total=(self.params['t_stop']-self.params['t_start'])/self.params['dt_readout']))
         log2 = {k: np.array([logentry[k] for logentry in log]) for k in log[0]}
         return log2

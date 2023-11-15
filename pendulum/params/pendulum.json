@@ -3,5 +3,6 @@
     "wind_update_period": 2,
     "Cd": 0.3,
     "alpha": 0.5,
-    "dt": 0.01
+    "dt": 0.01,
+    "adversarial_attack": true
 }

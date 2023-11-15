@@ -26,11 +26,13 @@ class RL():
     class Phi(nn.Module):
         def __init__(self):
             super().__init__()
-            self.fc1 = nn.Linear(2,20)
-            self.fc2 = nn.Linear(20,1)
+            self.fc1 = nn.Linear(2,10)
+            self.fc2 = nn.Linear(10,20)
+            self.fc3 = nn.Linear(20,1)
         def forward(self, x):
             x = F.relu(self.fc1(x))
-            return self.fc2(x)
+            x = F.relu(self.fc2(x))
+            return self.fc3(x)
 
     def __init__(self):
         self.m = self.l = 1
@@ -110,7 +112,7 @@ class PIDController(Controller):
         pass
 
 class MetaAdapt(PIDController):
-    def __init__(self):
+    def __init__(self, given_pid=False, p=0, d=0, i=0):
         super().__init__()
     
     def __call__(self, state):
@@ -118,7 +120,7 @@ class MetaAdapt(PIDController):
         return - self.m * self.l * self.g * np.sin(state[0]) - self.P*state[0] - self.I*self.integral - self.D*state[1] - self.f_hat(state)
 
 class MetaAdaptLinear(MetaAdapt):
-    def __init__(self, eta_a=0.01, eta_A=0.01):
+    def __init__(self, given_pid=False, p=0, d=0, i=0, eta_a=0.01, eta_A=0.01):
         super().__init__()
         setup_seed(345)
         self.W = np.random.uniform(low=-1, high=1, size=(20,2))
@@ -164,26 +166,54 @@ class MetaAdaptDeep(MetaAdapt):
             x = F.relu(self.fc2(x))
             return self.fc3(x)
 
-    def __init__(self, eta_a, eta_A):
+    def __init__(self, given_pid=False, p=0, d=0, i=0, eta_a=0.01, eta_A=0.01):
         super().__init__()
         self.eta_a = eta_a
         setup_seed(666)
         self.phi = self.Phi()
-        #self.phi.float()
         self.optimizer = optim.Adam(self.phi.parameters(), lr=eta_A)
         self.a = np.zeros(20, dtype=float)
         self.sub_step = 0
         self.batch = []
         self.loss = nn.MSELoss()
+
+        self.state_adv = np.zeros(2, dtype=float)
+    
+    def get_state_adv(self):
+        return self.state_adv
+
+    def inner_adapt_adversarial_attack(self, state, y, eps=10):
+        self.sub_step += 1
+        eta_a = self.eta_a / np.sqrt(self.sub_step)
+
+        state = torch.from_numpy(state).float()
+        state.requires_grad = True
+        temp = torch.dot(self.phi(state), torch.from_numpy(self.a).float())
+        self.phi.zero_grad()
+        temp_loss = self.loss(temp, torch.tensor(y, dtype=torch.float32))
+        temp_loss.backward()
+        print("state_grad: {}".format(state.grad))
+        state_adv = (state + eps * state.grad.sign()).detach().numpy()
+
+        self.state_adv = state_adv
+        with torch.no_grad():
+            fhat = self.f_hat(state.numpy())
+            self.a -= eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state.numpy()).float()).numpy()
+        '''
+        with torch.no_grad():
+            fhat = self.f_hat(state_adv)
+            self.a -= eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state_adv).float()).numpy()
+        '''
+        # self.batch.append((state_adv, self.a, y))
     
     def inner_adapt(self, state, y):
         self.sub_step += 1
         eta_a = self.eta_a / np.sqrt(self.sub_step)
         with torch.no_grad():
             fhat = self.f_hat(state)
-            self.a -= eta_a * 2 * (fhat-y) * self.phi(torch.from_numpy(state).float()).numpy()
+            self.a -= eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state).float()).numpy()
         self.batch.append((state, self.a, y))
-    
+
     def meta_adapt(self):
         self.optimizer.zero_grad()
         loss = 0
@@ -199,17 +229,29 @@ class MetaAdaptDeep(MetaAdapt):
         return np.dot(self.phi(torch.from_numpy(state).float()).detach().numpy(), self.a)
 
 class MetaAdaptOoD(MetaAdaptDeep):
-    def __init__(self, eta_a, eta_A, noise_x, noise_a):
-        super().__init__(eta_a, eta_A)
+    def __init__(self, given_pid=False, p=0, d=0, i=0, eta_a=0.01, eta_A=0.01, noise_x=0.025):
+        super().__init__()
         self.noise_x = noise_x
-        self.noise_a = noise_a
     
     def inner_adapt(self, state, y):
         with torch.no_grad():
             fhat = self.f_hat(state)
-            # print(fhat, y)
-            self.a -= self.eta_a * 2 * (fhat-y) * self.phi(torch.from_numpy(state).float()).numpy()
+            self.a -= self.eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state).float()).numpy()
         self.batch.append((state, self.a, y))
+
+    def inner_adapt_adversarial_attack(self, state, y, eps=10):
+        state = torch.from_numpy(state).float()
+        state.requires_grad = True
+        temp = torch.dot(self.phi(state), torch.from_numpy(self.a).float())
+        self.phi.zero_grad()
+        temp_loss = self.loss(temp, torch.tensor(y, dtype=torch.float32))
+        temp_loss.backward()
+        state_adv = (state + eps * state.grad.sign()).detach().numpy()
+
+        with torch.no_grad():
+            fhat = self.f_hat(state_adv)
+            self.a -= self.eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state_adv).float()).numpy()
+        self.batch.append((state_adv, self.a, y))
 
     def meta_adapt(self):
         self.optimizer.zero_grad()
@@ -219,7 +261,7 @@ class MetaAdaptOoD(MetaAdaptDeep):
             # a += self.noise_a * np.random.normal(loc=0, scale=1, size=a.shape)
             temp = torch.dot(self.phi(torch.from_numpy(X).float()), torch.from_numpy(a).float())
             loss += self.loss(temp, torch.tensor(y, dtype=torch.float32))
-        #print(loss)
+        
         loss.backward()
         self.optimizer.step()
         self.batch = []
@@ -234,8 +276,8 @@ class NeuralFly(MetaAdaptDeep):
             x = F.relu(self.fc1(x))
             return self.fc2(x)
 
-    def __init__(self, eta_a=0.01, eta_A=0.01):
-        super().__init__(eta_a=eta_a, eta_A=eta_A)
+    def __init__(self, given_pid=False, p=0, d=0, i=0, eta_a=0.01, eta_A=0.01):
+        super().__init__(given_pid, p, d, i, eta_a, eta_A)
         self.wind_idx = 0
         self.h = self.H()
         self.h_optimizer = optim.Adam(params=self.h.parameters(), lr=0.1)

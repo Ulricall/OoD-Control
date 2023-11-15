@@ -22,7 +22,7 @@ def train(C, Q, Name=""):
         setup_seed(i)
         if (Name == 'Neural-Fly'):
             C.wind_idx = i
-        Wind_Velocity = np.random.normal(loc=0, scale=0.5*(i%3+1), size=(20,3))
+        Wind_Velocity = np.random.gamma(shape=1., scale=0.5*(i%3+1), size=(20,3))
         log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity)
         log['p'] = log['X'][:, 0:3]
         squ_error = np.sum((log['p']-log['pd'])**2, 1)
@@ -37,9 +37,10 @@ def test(C, Q, Name, reset_control=True):
     ace_error_list = np.empty(2)
     for round in range(2):
         setup_seed(456+round*11)
-        Wind_Velocity = np.random.uniform(low=-Wind_velo, high=Wind_velo, size=(20,3))
+        Wind_Velocity = np.random.uniform(low=-Wind_velo, high=0., size=(20,3))
         # Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))
-        log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, reset_control=reset_control, Name=Name)
+        log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, 
+                    reset_control=reset_control, Name=Name)
         log['p'] = log['X'][:, 0:3]
         squ_error = np.sum((log['p']-log['pd'])**2, 1)
         if (args.logs):
@@ -53,7 +54,7 @@ def test(C, Q, Name, reset_control=True):
     print("ACE Error: %.3f(%.3f)" % (np.mean(ace_error_list), np.std(ace_error_list, ddof=1)))
     return np.mean(ace_error_list)
 
-def contrast_algo():
+def contrast_algo(given_pid=False, p=0, i=0, d=0):
     # q_rl = quadsim.Quadrotor()
     # c_rl = controller.RLController(q_rl)
     # setup_seed(11)
@@ -68,24 +69,26 @@ def contrast_algo():
     # torch.save(c_real.a, "a.npy")
     # test(c_real, q_real, "real_machine")
 
-    # c_pid = controller.PIDController()
-    c_deep = controller.MetaAdaptDeep(eta_a_base=0.01, eta_A_base=0.05)    
-    # c_linear = controller.MetaAdaptLinear()
-    # c_NF = controller.NeuralFly()
+    c_pid = controller.PIDController(given_pid=given_pid, p=p, i=i, d=d)
+    c_linear = controller.MetaAdaptLinear(given_pid=given_pid, p=p, i=i, d=d)
+    c_deep = controller.MetaAdaptDeep(given_pid=given_pid, p=p, i=i, d=d, 
+                                      eta_a_base=0.01, eta_A_base=0.05)    
+    c_NF = controller.NeuralFly(given_pid=given_pid, p=p, i=i, d=d)
     q_pid = quadsim.Quadrotor()
     q_deep = quadsim.Quadrotor()
-    # q_linear = quadsim.Quadrotor()
-    # q_NF = quadsim.Quadrotor()
+    q_linear = quadsim.Quadrotor()
+    q_NF = quadsim.Quadrotor()
     train(c_deep, q_deep, "OMAC(deep)")
-    # train(c_NF, q_NF, "Neural-Fly")
-    # test(c_pid, q_pid, "PID")
-    # test(c_linear, q_linear, "Linear")
+    train(c_NF, q_NF, "Neural-Fly")
+    test(c_pid, q_pid, "PID")
+    test(c_linear, q_linear, "Linear")
     test(c_deep, q_deep, "OMAC(deep)", False)
-    # test(c_NF, q_NF, "Neural-Fly", False)
+    test(c_NF, q_NF, "Neural-Fly", False)
 
-def objfunction(x):
+def objfunction(x=0.06, given_pid=False, p=0, i=0, d=0):
     if x==None: return None
-    c_ood = controller.MetaAdaptOoD(eta_a_base=0.01, eta_A_base=0.05, noise_a=x, noise_x=x)
+    c_ood = controller.MetaAdaptOoD(given_pid=given_pid, p=p, i=i, d=d, 
+                                    eta_a_base=0.01, eta_A_base=0.05, noise_a=x, noise_x=x)
     q_ood = quadsim.Quadrotor()
 
     train(c_ood, q_ood, "OoD-Control")
@@ -125,7 +128,6 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
     
-    # contrast_algo()
     optimizer = BayesianOptimization(
                     f=PIDobjfunc, 
                     pbounds={"p":(3, 9), 'i':(0,2), 'd':(1,5)},
@@ -138,11 +140,12 @@ if __name__ == '__main__':
                 )
     best_p = optimizer.max['params']
     best_result = optimizer.max['target']
-    print(best_p)
-    print(-best_result)
     
-    c_pid = controller.PIDController(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'])
-    q_pid = quadsim.Quadrotor()
-    test_error = test(c_pid, q_pid, 'PID')
-    print(test_error)
-    # objfunction(0.06)
+    contrast_algo(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'])
+
+    c_ood = controller.MetaAdaptOoD(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'], 
+                                    eta_a_base=0.01, eta_A_base=0.05, noise_a=0.06, noise_x=0.06)
+    q_ood = quadsim.Quadrotor()
+
+    train(c_ood, q_ood, "OoD-Control")
+    test(c_ood, q_ood, "OoD-Control", False)

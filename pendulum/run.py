@@ -40,27 +40,43 @@ def test(Q, Name):
             if not os.path.exists('./logs'):
                 os.makedirs('./logs')
             if not os.path.exists('./F_logs'):
-                os.makedirs('./F_logs')            
+                os.makedirs('./F_logs')
             np.save('logs/'+Name+'_'+str(i)+'.npy', log)
             np.save('F_logs/'+Name+'_'+str(i)+'.npy', logf)
     losses = np.array(losses)
     print(Name, "ACE Error: %.3f(%.3f)" % (np.mean(losses), np.std(losses, ddof=1)))
     return np.mean(losses)
 
-def contrast_algos():
-    c_pid = controller.PIDController()
-    q_pid = simulation.Pendulum(c_pid)
-    c_linear = controller.MetaAdaptLinear(eta_a=0.04)
-    q_linear = simulation.Pendulum(c_linear)
-    c_deep = controller.MetaAdaptDeep(eta_a=0.04, eta_A=0.02)
-    q_deep = simulation.Pendulum(c_deep)
-    c_neural = controller.NeuralFly(eta_a=0.04, eta_A=0.02)
-    q_neural = simulation.Pendulum(c_neural)
+def test_adversarial_attack(Q, Name):
+    Q.test = True
+    losses = []
+    for i in range(10):
+        setup_seed(100+i)
+        Wind = np.random.uniform(low=-Wind_velo, high=0, size=(20,2)) # Test wind distributions
+        # Wind = np.random.uniform(low=-Wind_velo, high=Wind_velo, size=(20,2)) 
+        # Wind = np.random.normal(loc=0, scale=1, size=(20,2))
+        log, logf = Q.run(Wind=Wind)
+        losses.append(np.mean(np.abs(log[:,0])))
+        if (args.logs==1):
+            if not os.path.exists('./adversarial_attack_logs'):
+                os.makedirs('./adversarial_attack_logs')
+            if not os.path.exists('./adversarial_attack_F_logs'):
+                os.makedirs('./adversarial_attack_F_logs') 
+            np.save('adversarial_attack_logs/' + Name + '_' + str(i) + '.npy', log)
+            np.save('adversarial_attack_F_logs/' + Name + '_' + str(i) + '.npy', logf)
+    losses = np.array(losses)
+    print(Name, "ACE Error: %.3f(%.3f)" % (np.mean(losses), np.std(losses, ddof=1)))
+    return np.mean(losses)
 
-    # c_rl = controller.RL()
-    # q_rl = simulation.Pendulum(c_rl)
-    # c_rl.train()
-    #test(q_rl, 'RL')
+def contrast_algos(given_pid=False, p=0, i=0, d=0):
+    c_pid = controller.PIDController(given_pid=given_pid, p=p, i=i, d=d)
+    q_pid = simulation.Pendulum(c_pid)
+    c_linear = controller.MetaAdaptLinear(given_pid=given_pid, p=p, i=i, d=d, eta_a=0.04)
+    q_linear = simulation.Pendulum(c_linear)
+    c_deep = controller.MetaAdaptDeep(given_pid=given_pid, p=p, i=i, d=d, eta_a=0.04, eta_A=0.02)
+    q_deep = simulation.Pendulum(c_deep)
+    c_neural = controller.NeuralFly(given_pid=given_pid, p=p, i=i, d=d, eta_a=0.04, eta_A=0.02)
+    q_neural = simulation.Pendulum(c_neural)
     
     train(q_deep)
     train(q_linear)
@@ -68,13 +84,23 @@ def contrast_algos():
     test(q_pid, 'PID')
     test(q_linear, 'Linear')
     test(q_deep, 'OMAC(deep)')
-    test(q_neural, 'NeuralFly')    
+    test(q_neural, 'NeuralFly')
+
+def contrast_algos_adversarial_attack(given_pid=False, p=0, i=0, d=0):
+    c_deep = controller.MetaAdaptDeep(given_pid=given_pid, p=p, i=i, d=d, eta_a=0.04, eta_A=0.02)
+    q_deep = simulation.Pendulum(c_deep)
+    #c_neural = controller.NeuralFly(given_pid=given_pid, p=p, i=i, d=d, eta_a=0.04, eta_A=0.02)
+    #q_neural = simulation.Pendulum(c_neural)
+    
+    train(q_deep)
+    #train_adversarial_attack(q_neural)
+    test_adversarial_attack(q_deep, 'OMAC(deep)')
+    #test_adversarial_attack(q_neural, 'NeuralFly')
 
 def objfunc(noise_x):
-    c_ood = controller.MetaAdaptOoD(eta_a=0.04, eta_A=0.02, noise_x=noise_x, noise_a=noise_x)
+    c_ood = controller.MetaAdaptOoD(eta_a=0.04, eta_A=0.02, noise_x=noise_x)
     q_ood = simulation.Pendulum(c_ood)
-    train(q_ood)
-    loss = test(q_ood, 'OoDControl')
+    loss = train(q_ood, "OoDControl")
     return -loss
 
 def PIDobjfunc(p, i, d):
@@ -96,9 +122,9 @@ if __name__=='__main__':
         Wind_velo = 12
     else:
         raise NotImplementedError
-    
-    contrast_algos()
 
+    '''
+    # Bayesian Optimization for PID
     optimizer = BayesianOptimization(
                     f=PIDobjfunc, 
                     pbounds={"p":(2, 6), 'i':(0, 1), 'd':(2, 6)},
@@ -107,30 +133,61 @@ if __name__=='__main__':
                 )
     optimizer.maximize(
                 init_points=2,
-                n_iter=10,
+                n_iter=7,
             )
     best_p = optimizer.max['params']
     best_result = optimizer.max['target']
-    print(best_p)
-    print(-best_result)
-
-    c_pid = controller.PIDController(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'])
-    q_pid = simulation.Pendulum(c_pid)
-    test_error = test(q_pid, 'PID')
-    print(test_error)
-
+    
+    '''
+    contrast_algos_adversarial_attack(given_pid=True, p=4.452, i=0.0, d=3.284)
+    '''
+    
+    # Bayesian Optimization for the noise of OoD-Control
     optimizer_ood = BayesianOptimization(
-                    f=objfunc, 
+                    f=objfunc,
                     pbounds={"noise_x":(0, 0.005)},
                     verbose=2,
                     random_state=1,
                 )
     optimizer_ood.maximize(
                 init_points=2,
-                n_iter=10,
+                n_iter=7,
             )
     
-    best_p_ood = optimizer.max['params']
-    best_result_ood = optimizer.max['target']
-    print(best_p_ood)
-    print(-best_result_ood)
+    best_p_ood = optimizer_ood.max['params']
+    best_result_ood = optimizer_ood.max['target']
+    
+    # OoD-Control
+    c_ood = controller.MetaAdaptOoD(given_pid=True, p=4.452, i=0.0, d=3.284,
+                                eta_a=0.04, eta_A=0.02, noise_x=7.415e-05)
+    q_ood = simulation.Pendulum(c_ood)
+    train_adversarial_attack(q_ood)
+    test_adversarial_attack(q_ood, 'OoDControl')
+    '''
+    
+    # Experiments for contrast algorithms
+    # contrast_algos(given_pid=True, p=4.452, i=0.0, d=3.284)
+
+    '''
+    # Bayesian Optimization for the noise of OoD-Control
+    optimizer_ood = BayesianOptimization(
+                    f=objfunc,
+                    pbounds={"noise_x":(0, 0.005)},
+                    verbose=2,
+                    random_state=1,
+                )
+    optimizer_ood.maximize(
+                init_points=2,
+                n_iter=7,
+            )
+    
+    best_p_ood = optimizer_ood.max['params']
+    best_result_ood = optimizer_ood.max['target']
+    '''
+    
+    # OoD-Control test
+    c_ood = controller.MetaAdaptOoD(given_pid=True, p=4.452, i=0.0, d=3.284, eta_a=0.04, eta_A=0.02, 
+                                    noise_x=7.415e-05)
+    q_ood = simulation.Pendulum(c_ood)
+    train(q_ood)
+    test_adversarial_attack(q_ood, 'OoDControl')

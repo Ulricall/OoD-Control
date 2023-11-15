@@ -33,7 +33,8 @@ def readparamfile(filename, params=None):
     return params
 
 class Controller():
-    def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, px4paramfile=DEFAULT_PX4_PARAM_FILE):
+    def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, 
+                 px4paramfile=DEFAULT_PX4_PARAM_FILE):
         self.params = readparamfile(quadparamfile)
 
         self.px4_params = readparamfile(px4paramfile) 
@@ -108,14 +109,101 @@ class Controller():
         self.limit(alpha_sp, self.px4_params['angacc_max'])
         return alpha_sp
 
-# class LQRController():
-#     def __init__(self, Q=np.eye(13), R=np.eye(4)):
-#         self.Q = Q
-#         self.R = R
+class PPOController():
+    class Policy(nn.Module):
+        def __init__(self, n_states=13, n_hiddens=16, n_actions=4):
+            super().__init__()
+            self.fc1 = nn.Linear(n_states, n_hiddens)
+            self.fc2 = nn.Linear(n_hiddens, 2 * n_hiddens)
+            self.mu = nn.Linear(2 * n_hiddens, n_actions)
+            self.log_sigma = nn.Parameter(torch.zeros(1, n_actions))
+
+        def forward(self, x):
+            x = F.relu(self.fc1(x))
+            x = F.relu(self.fc2(x), dim=1)
+            mu = self.mu(x)
+            log_sigma = self.log_sigma + torch.zeros_like(mu)
+            sigma = torch.exp(log_sigma)
+            return mu, sigma
+        
+    class Value(nn.Module):
+        def __init__(self, n_states=13, n_hiddens=50):
+            super().__init__()
+            self.fc1 = nn.Linear(n_states, n_hiddens)
+            self.fc2 = nn.Linear(n_hiddens, 1)
+
+        def forward(self, x):
+            x = F.relu(self.fc1(x))
+            x = self.fc2(x)
+            return x
+
+    def __init__(self, Q, n_states, n_hiddens, n_actions, actor_lr, critic_lr, 
+                 lmbda, epochs, eps, gamma):
+        self.Q = Q
+
+        self.Actor = self.Policy(n_states, n_hiddens, n_actions)
+        self.Critic = self.Value(n_states, n_hiddens)
+        self.actor_optimizer = torch.optim.Adam(self.Actorctor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(self.Critic.parameters(), lr=critic_lr)
+        self.Gamma = gamma
+        self.Lambda = lmbda
+        self.epochs = epochs
+        self.Epsilon = eps
+        self.trace = None
     
-#     def __call__(self, X):
-#         A = np.zeros((13,13))
-#         A[0,7] = A[1,8] = A[2,9] = 1
+    def sample_action(self, logit):
+        dist = torch.distributions.Normal(logit['mu'], logit['sigma'])
+        dist = torch.distributions.Independent(dist, 1)
+        return dist.sample()
+
+    def take_action(self, X):
+        X = torch.tensor(X[np.newaxis, :])
+        u = self.Actor(X)
+        # action_list = torch.distributions.Categorical(u)
+        # action = action_list.sample().item()
+        return u
+
+    def train(self, transition_dict):
+        states = torch.tensor(transition_dict['states'], dtype=torch.float)
+        actions = torch.tensor(transition_dict['actions']).view(-1, 1)
+        rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1, 1)
+        next_states = torch.tensor(transition_dict['next_states'], dtype=torch.float)
+        dones = torch.tensor(transition_dict['dones'], dtype=torch.float).view(-1, 1)
+
+        next_q_target = self.Critic(next_states)
+        td_target = rewards + self.Gamma * next_q_target * (1 - dones)
+        td_value = self.Critic(states)
+        td_delta = td_target - td_value
+
+        td_delta = td_delta.detach().numpy()
+        advantage = 0
+        advantage_list = []
+
+        for delta in td_delta[::-1]:
+            advantage = self.Gamma * self.Lambda * advantage + delta
+            advantage_list.append(advantage)
+        
+        advantage_list.reverse()
+        advantage = torch.tensor(advantage_list, dtype=torch.float)
+        old_log_probs = torch.log(self.actor(states).gather(1, actions))
+
+        for _ in range(self.epochs):
+            log_probs = torch.log(self.actor(states).gather(1, actions))
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.Epsilon, 1 + self.Epsilon) * advantage
+
+            actor_loss = torch.mean(-torch.min(surr1, surr2))
+            critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target.detach()))
+
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+
+            actor_loss.backward()
+            critic_loss.backward()
+
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
 
 class RLController():
     class Phi(nn.Module):
@@ -127,8 +215,8 @@ class RLController():
             x = F.relu(self.fc1(x))
             return self.fc2(x)
 
-    def __init__(self, Q, reward_delay=0.9, alpha_x=1, alpha_y=1, alpha_z=1, \
-        alpha_xdot=0.1, alpha_ydot=0.1, alpha_zdot=0.1, alpha_w=0.1):
+    def __init__(self, Q, reward_delay=0.9, alpha_x=1, alpha_y=1, alpha_z=1, 
+                 alpha_xdot=0.1, alpha_ydot=0.1, alpha_zdot=0.1, alpha_w=0.1):
         self.reward_delay = reward_delay
         self.alpha_x = alpha_x
         self.alpha_y = alpha_y
@@ -190,7 +278,9 @@ class RLController():
                 self.phi = self.phi_copy
 
 class PIDController(Controller):
-    def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, ctrlparamfile=DEFAULT_CONTROL_PARAM_FILE, given_pid=False, p=0, i=0, d=0):
+    def __init__(self, quadparamfile=DEFAULT_QUAD_PARAMETER_FILE, 
+                 ctrlparamfile=DEFAULT_CONTROL_PARAM_FILE, 
+                 given_pid=False, p=0, i=0, d=0):
         super().__init__(quadparamfile=quadparamfile)
         self.params = readparamfile(filename=ctrlparamfile, params=self.params)
         self.given_pid = given_pid
@@ -198,7 +288,6 @@ class PIDController(Controller):
             self.p = [p,p,p]
             self.i = [i,i,i]
             self.d = [d,d,d]
-        #print(ctrlparamfile)
 
     def calculate_gains(self):
         if (self.given_pid):
@@ -251,9 +340,9 @@ class PIDController(Controller):
         p_error = X[0:3] - pd
         v_error = X[7:10] - vd
         self.int_error += self.dt * p_error
-        a_r = - self.params['K_p'] @ p_error - self.params['K_d'] @ v_error - self.params['K_i'] @ self.int_error + ad
+        a_r = - self.params['K_p'] @ p_error - self.params['K_d'] @ v_error - \
+                self.params['K_i'] @ self.int_error + ad
         F_r = (a_r * self.params['m']) + np.array([0., 0., self.params['m'] * self.params['g']])
-        #print(F_r)
 
         if self.F_r_last is None:
             self.F_r_dot = np.zeros(3)
@@ -277,7 +366,8 @@ class PIDController(Controller):
         
         yaw = 0.
         self.t_last = t
-        F_r, F_r_dot = self.get_Fr(X, imu=imu, pd=pd, vd=vd, ad=ad, meta_adapt_trigger=meta_adapt_trigger)
+        F_r, F_r_dot = self.get_Fr(X, imu=imu, pd=pd, vd=vd, ad=ad, 
+                                   meta_adapt_trigger=meta_adapt_trigger)
         T_r_prime = np.linalg.norm(F_r + self.params['thrust_delay'] * F_r_dot)
         q_r_prime = self.get_q(F_r + self.params['attitude_delay'] * F_r_dot, yaw)
         F_r_prime = rowan.to_matrix(q_r_prime) @ np.array((0, 0, T_r_prime))
@@ -287,7 +377,7 @@ class PIDController(Controller):
         return T_r_prime, q_r_prime
 
 class MetaAdapt(PIDController):
-    def __init__(self):
+    def __init__(self, given_pid=False, p=0, i=0, d=0):
         super().__init__()
         self.motor_speed = np.zeros(4)
     
@@ -332,7 +422,7 @@ class MetaAdapt(PIDController):
 
 class MetaAdaptLinear(MetaAdapt):
     # f_hat = (Wx+b) * A * a
-    def __init__(self, dim_a=100, eta_a_base=0.01, eta_A_base=0.01):
+    def __init__(self, given_pid=False, p=0, i=0, d=0, dim_a=100, eta_a_base=0.01, eta_A_base=0.01):
         super().__init__()
         self.dim_a = dim_a - dim_a % 3
         self.eta_a_base = eta_a_base
@@ -393,7 +483,8 @@ class MetaAdaptDeep(MetaAdapt):
             x = self.fc3(x)
             return x
     
-    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.001, eta_A_base=0.001):
+    def __init__(self, given_pid=False, p=0, i=0, d=0, dim_a=100, layer_size=(25,30), 
+                 eta_a_base=0.001, eta_A_base=0.001):
         super().__init__()
         self.dim_a = dim_a - dim_a%3
         self.layer_sizes = layer_size
@@ -438,8 +529,10 @@ class MetaAdaptDeep(MetaAdapt):
         self.batch = []
 
 class MetaAdaptOoD(MetaAdaptDeep):
-    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.001, eta_A_base=0.001, noise_x=0.01, noise_a=0.01):
-        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, eta_A_base=eta_A_base)
+    def __init__(self, given_pid=False, p=0, i=0, d=0, dim_a=100, layer_size=(25,30), eta_a_base=0.001,
+                 eta_A_base=0.001, noise_x=0.01, noise_a=0.01):
+        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, 
+                         eta_A_base=eta_A_base)
         self.noise_x = noise_x
         self.noise_a = noise_a
     
@@ -473,8 +566,10 @@ class NeuralFly(MetaAdaptDeep):
             x = self.fc3(x)
             return x
 
-    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.01, eta_A_base=0.001):
-        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, eta_A_base=eta_A_base)
+    def __init__(self, given_pid=False, p=0, i=0, d=0, dim_a=100, layer_size=(25,30), eta_a_base=0.01, 
+                 eta_A_base=0.001):
+        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, 
+                         eta_A_base=eta_A_base)
         self.wind_idx = 0
         self.alpha = 0.5
         # self.lr = lr
@@ -493,7 +588,8 @@ class NeuralFly(MetaAdaptDeep):
         for X, y, a in self.batch:
             phi = torch.kron(torch.eye(3), self.phi(torch.from_numpy(X)))
             loss += self.loss(torch.matmul(phi, torch.from_numpy(a)), torch.from_numpy(y)) \
-                 - self.alpha * self.h_loss(self.h(self.phi(torch.from_numpy(X))).unsqueeze(0), target).detach()
+                 - self.alpha * self.h_loss(self.h(self.phi(torch.from_numpy(X))).unsqueeze(0), 
+                                            target).detach()
         loss.backward()
         self.optimizer.step()
 
@@ -510,8 +606,10 @@ class NeuralFly(MetaAdaptDeep):
         self.batch = []
 
 class RealMachine(MetaAdaptOoD):
-    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.001, eta_A_base=0.001, noise_x=0.01, noise_a=0.01):
-        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, eta_A_base=eta_A_base)
+    def __init__(self, dim_a=100, layer_size=(25,30), eta_a_base=0.001, eta_A_base=0.001, noise_x=0.01, 
+                 noise_a=0.01):
+        super().__init__(dim_a=dim_a, layer_size=layer_size, eta_a_base=eta_a_base, 
+                         eta_A_base=eta_A_base)
         self.noise_x = 0.01
         self.noise_a = 0.01
 

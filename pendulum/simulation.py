@@ -37,7 +37,8 @@ class Pendulum:
     
     def f(self, state):
         F_wind = self.get_wind_force()
-        return np.array([state[1], (self.u+F_wind)/(self.m * self.l**2) + self.g/self.l * np.sin(state[0])])
+        return np.array([state[1], (self.u + F_wind)/(self.m * self.l**2) + 
+                         self.g / self.l * np.sin(state[0])])
     
     def step(self):
         if self.params['integration_method'] == 'rk4':
@@ -51,11 +52,14 @@ class Pendulum:
         else:
             Xdot = self.f(self.state)
             F_gt = self.get_wind_force()
-            self.controller.inner_adapt(self.state, F_gt)
-            self.state += Xdot * self.dt
+            if self.test == True and self.params['adversarial_attack'] == True:
+                self.controller.inner_adapt_adversarial_attack(self.state, F_gt, eps=7.5)
+                self.state += Xdot * self.dt
+            else:
+                self.controller.inner_adapt(self.state, F_gt)
+                self.state += Xdot * self.dt
     
     def run(self, init_theta=0., init_dtheta=0., duration=30, Wind=None):
-        log = []
         self.last_wind_state = 0
         self.Wind = Wind
         self.total_wind = 0
@@ -65,9 +69,9 @@ class Pendulum:
         Log = []
         logu = []
         while (t < duration):
-            #print(self.state)
-            self.u = self.controller(self.state)
-            logu.append([self.u-standard(self.state), self.get_wind_force()])
+            #self.u = self.controller(self.state)
+            self.u = self.controller(self.controller.get_state_adv())
+            logu.append([self.u - standard(self.state), self.get_wind_force()])
             Log.append(self.state.tolist())
             self.step()
             t += self.dt
@@ -78,5 +82,5 @@ class Pendulum:
                     self.controller.meta_adapt()
                 else:
                     pass
-        #print(Log)
+        
         return np.array(Log), np.array(logu)
