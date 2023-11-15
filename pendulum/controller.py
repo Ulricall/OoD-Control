@@ -183,22 +183,17 @@ class MetaAdaptDeep(MetaAdapt):
         return self.state_adv
 
     def inner_adapt_adversarial_attack(self, state, y, eps=10):
-        self.sub_step += 1
-        eta_a = self.eta_a / np.sqrt(self.sub_step)
-
         state = torch.from_numpy(state).float()
         state.requires_grad = True
         temp = torch.dot(self.phi(state), torch.from_numpy(self.a).float())
         self.phi.zero_grad()
         temp_loss = self.loss(temp, torch.tensor(y, dtype=torch.float32))
         temp_loss.backward()
-        # print("state_grad: {}".format(state.grad))
         state_adv = (state + eps * state.grad.sign()).detach().numpy()
 
-        self.state_adv = state_adv
         with torch.no_grad():
-            fhat = self.f_hat(state.numpy())
-            self.a -= eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state.numpy()).float()).numpy()
+            fhat = self.f_hat(state_adv)
+            self.a -= self.eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state_adv).float()).numpy()
         '''
         with torch.no_grad():
             fhat = self.f_hat(state_adv)
@@ -245,22 +240,17 @@ class MetaAdaptOoD(MetaAdaptDeep):
         self.batch.append((state, self.a, y))
 
     def inner_adapt_adversarial_attack(self, state, y, eps=10):
-        self.sub_step += 1
-        eta_a = self.eta_a / np.sqrt(self.sub_step)
-
         state = torch.from_numpy(state).float()
         state.requires_grad = True
         temp = torch.dot(self.phi(state), torch.from_numpy(self.a).float())
         self.phi.zero_grad()
         temp_loss = self.loss(temp, torch.tensor(y, dtype=torch.float32))
         temp_loss.backward()
-        # print("state_grad: {}".format(state.grad))
         state_adv = (state + eps * state.grad.sign()).detach().numpy()
 
-        self.state_adv = state_adv
         with torch.no_grad():
-            fhat = self.f_hat(state.numpy())
-            self.a -= eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state.numpy()).float()).numpy()
+            fhat = self.f_hat(state_adv)
+            self.a -= self.eta_a * 2 * (fhat - y) * self.phi(torch.from_numpy(state_adv).float()).numpy()
 
     def meta_adapt(self):
         self.optimizer.zero_grad()

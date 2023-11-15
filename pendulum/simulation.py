@@ -53,7 +53,7 @@ class Pendulum:
             Xdot = self.f(self.state)
             F_gt = self.get_wind_force()
             if self.test == True and self.params['adversarial_attack'] == True:
-                self.controller.inner_adapt_adversarial_attack(self.state, F_gt, eps=0.05)
+                self.controller.inner_adapt_adversarial_attack(self.state, F_gt, eps=0.5)
                 self.state += Xdot * self.dt
             else:
                 self.controller.inner_adapt(self.state, F_gt)
@@ -69,8 +69,8 @@ class Pendulum:
         Log = []
         logu = []
         while (t < duration):
-            #self.u = self.controller(self.state)
-            self.u = self.controller(self.controller.get_state_adv())
+            self.u = self.controller(self.state)
+            # self.u = self.controller(self.controller.get_state_adv())
             logu.append([self.u - standard(self.state), self.get_wind_force()])
             Log.append(self.state.tolist())
             self.step()
