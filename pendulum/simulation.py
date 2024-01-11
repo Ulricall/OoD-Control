@@ -52,12 +52,8 @@ class Pendulum:
         else:
             Xdot = self.f(self.state)
             F_gt = self.get_wind_force()
-            if self.test == True and self.params['adversarial_attack'] == True:
-                self.controller.inner_adapt_adversarial_attack(self.state, F_gt, eps=0.5)
-                self.state += Xdot * self.dt
-            else:
-                self.controller.inner_adapt(self.state, F_gt)
-                self.state += Xdot * self.dt
+            self.controller.inner_adapt(self.state, F_gt)
+            self.state += Xdot * self.dt
     
     def run(self, init_theta=0., init_dtheta=0., duration=30, Wind=None):
         self.last_wind_state = 0

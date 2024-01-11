@@ -34,8 +34,8 @@ def train(C, Q, Name=""):
 def test(C, Q, Name, reset_control=True):
     print("Testing " + Name)
     C.state = 'test'
-    ace_error_list = np.empty(2)
-    for round in range(2):
+    ace_error_list = np.empty(10)
+    for round in range(10):
         setup_seed(456+round*11)
         Wind_Velocity = np.random.uniform(low=-Wind_velo, high=0., size=(20,3))
         # Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))

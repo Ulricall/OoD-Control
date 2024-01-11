@@ -129,3 +129,6 @@ logs/
 F_logs/
 adversarial_attack_F_logs/
 adversarial_attack_logs/
+traces/
+projections/
+pics/

@@ -26,7 +26,7 @@ def get_ground_truth(t, len):
 
 def plot_3D_trace(Names):
     fig = plt.figure()
-    ax = fig.gca(projection='3d')
+    ax = fig.add_subplot(projection='3d')
     ax.set_xlabel("x[m]")
     ax.set_ylabel("y[m]")
     ax.set_zlabel("z[m]")
@@ -49,17 +49,17 @@ def plot_3D_trace(Names):
 
 def show_project(name):
     gt = get_ground_truth(t, 20)
-    plt.scatter(gt[:,0], gt[:,2], s=1, c='k', label='ground truth')
+    plt.scatter(gt[:,0], gt[:,1], s=1, c='k', label='ground truth')
     log = load_data(name)
-    norm = matplotlib.colors.Normalize(vmin=0, vmax=0.6)
-    plt.scatter(log[:,0], log[:,2], c=np.sqrt((log[:,0]-gt[:,0])**2+(log[:,2]-gt[:,2])**2), cmap='rainbow', label=name, s=2, norm=norm)
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=0.3)
+    plt.scatter(log[:,0], log[:,1], c=np.sqrt((log[:,0]-gt[:,0])**2+(log[:,1]-gt[:,1])**2), cmap='rainbow', label=name, s=2, norm=norm)
     plt.colorbar()
-    plt.xlim((-3,3))
-    plt.ylim((-2,2))
+    plt.xlim((-1.2, 1.2))
+    plt.ylim((-2.2, 0.2))
     #plt.legend(loc='upper right')
     if not os.path.exists('./projections'):
         os.makedirs('./projections')
-    plt.savefig("projections/project_"+t.name+'_'+name+".png", dpi=150)
+    plt.savefig("projections/project_"+t.name+'_'+name+".eps", dpi=150)
     plt.close()
     #plt.show()
 
