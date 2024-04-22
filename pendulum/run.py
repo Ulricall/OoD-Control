@@ -7,6 +7,14 @@ import argparse
 import os
 from bayes_opt import BayesianOptimization
 from bayes_opt import UtilityFunction
+import json
+
+def readparamfile(filename, params=None):
+    if params is None:
+        params = {}
+    with open(filename) as file:
+        params.update(json.load(file))
+    return params
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -81,6 +89,7 @@ parser = argparse.ArgumentParser()
 if __name__=='__main__':
     parser.add_argument('--logs', type=int, default=1)
     parser.add_argument('--wind', type=str, default='gale')
+    parser.add_argument('--use_bayes', type=bool, default=False)
     args = parser.parse_args()
     if (args.wind=='breeze'):
         Wind_velo = 4
@@ -91,71 +100,44 @@ if __name__=='__main__':
     else:
         raise NotImplementedError
 
-    '''
     # Bayesian Optimization for PID
-    optimizer = BayesianOptimization(
-                    f=PIDobjfunc, 
-                    pbounds={"p":(2, 6), 'i':(0, 1), 'd':(2, 6)},
-                    verbose=2,
-                    random_state=1,
+    if (args.use_bayes):
+        optimizer = BayesianOptimization(
+                        f=PIDobjfunc, 
+                        pbounds={"p":(2, 6), 'i':(0, 1), 'd':(2, 6)},
+                        verbose=2,
+                        random_state=1,
+                    )
+        optimizer.maximize(
+                    init_points=2,
+                    n_iter=7,
                 )
-    optimizer.maximize(
-                init_points=2,
-                n_iter=7,
-            )
-    best_p = optimizer.max['params']
-    best_result = optimizer.max['target']
+        best_p = optimizer.max['params']
+        best_result = optimizer.max['target']
+    else:
+        best_p = readparamfile('params/pid.json')
     
-    '''
-    contrast_algos(given_pid=True, p=4.452, i=0.0, d=3.284)
-    '''
+    contrast_algos(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'])
     
     # Bayesian Optimization for the noise of OoD-Control
-    optimizer_ood = BayesianOptimization(
-                    f=objfunc,
-                    pbounds={"noise_x":(0, 0.005)},
-                    verbose=2,
-                    random_state=1,
+    if (args.use_bayes):
+        optimizer_ood = BayesianOptimization(
+                        f=objfunc,
+                        pbounds={"noise_x":(0, 0.005)},
+                        verbose=2,
+                        random_state=1,
+                    )
+        optimizer_ood.maximize(
+                    init_points=2,
+                    n_iter=7,
                 )
-    optimizer_ood.maximize(
-                init_points=2,
-                n_iter=7,
-            )
-    
-    best_p_ood = optimizer_ood.max['params']
-    best_result_ood = optimizer_ood.max['target']
-    
-    # OoD-Control
-    c_ood = controller.MetaAdaptOoD(given_pid=True, p=4.452, i=0.0, d=3.284,
-                                eta_a=0.04, eta_A=0.02, noise_x=7.415e-05)
-    q_ood = simulation.Pendulum(c_ood)
-    train_adversarial_attack(q_ood)
-    test_adversarial_attack(q_ood, 'OoDControl')
-    '''
-    
-    # Experiments for contrast algorithms
-    # contrast_algos(given_pid=True, p=4.452, i=0.0, d=3.284)
-
-    '''
-    # Bayesian Optimization for the noise of OoD-Control
-    optimizer_ood = BayesianOptimization(
-                    f=objfunc,
-                    pbounds={"noise_x":(0, 0.005)},
-                    verbose=2,
-                    random_state=1,
-                )
-    optimizer_ood.maximize(
-                init_points=2,
-                n_iter=7,
-            )
-    
-    best_p_ood = optimizer_ood.max['params']
-    best_result_ood = optimizer_ood.max['target']
-    '''
+        best_noise_x = optimizer_ood.max['params']['noise_x']
+        best_result_ood = optimizer_ood.max['target']
+    else:
+        best_noise_x = best_p['noise_x']
     
     # OoD-Control test
-    c_ood = controller.MetaAdaptOoD(given_pid=True, p=4.452, i=0.0, d=3.284, eta_a=0.04, eta_A=0.02, 
-                                    noise_x=7.415e-05)
+    c_ood = controller.MetaAdaptOoD(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'], eta_a=0.04, eta_A=0.02, noise_x=best_noise_x)
     q_ood = simulation.Pendulum(c_ood)
     train(q_ood)
     test(q_ood, 'OoDControl')

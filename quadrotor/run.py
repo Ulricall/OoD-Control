@@ -7,6 +7,14 @@ import random
 import argparse
 import os
 from bayes_opt import BayesianOptimization
+import json
+
+def readparamfile(filename, params=None):
+    if params is None:
+        params = {}
+    with open(filename) as file:
+        params.update(json.load(file))
+    return params
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -107,6 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('--logs', type=int, default=1)
     parser.add_argument('--trace', type=str, default='hover')
     parser.add_argument('--wind', type=str, default='gale')
+    parser.add_argument('--use_bayes', type=bool, default=False)
     args = parser.parse_args()
     if (args.wind=='breeze'):
         Wind_velo = 4
@@ -128,18 +137,21 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
     
-    optimizer = BayesianOptimization(
-                    f=PIDobjfunc, 
-                    pbounds={"p":(3, 9), 'i':(0,2), 'd':(1,5)},
-                    verbose=2,
-                    random_state=1,
-                )
-    optimizer.maximize(
-                    init_points=2, 
-                    n_iter=10,
-                )
-    best_p = optimizer.max['params']
-    best_result = optimizer.max['target']
+    if (args.use_bayes):
+        optimizer = BayesianOptimization(
+                        f=PIDobjfunc, 
+                        pbounds={"p":(3, 9), 'i':(0,2), 'd':(1,5)},
+                        verbose=2,
+                        random_state=1,
+                    )
+        optimizer.maximize(
+                        init_points=2, 
+                        n_iter=10,
+                    )
+        best_p = optimizer.max['params']
+        best_result = optimizer.max['target']
+    else:
+        best_p = readparamfile('params/pid.json')
     
     contrast_algo(given_pid=True, p=best_p['p'], i=best_p['i'], d=best_p['d'])
 
