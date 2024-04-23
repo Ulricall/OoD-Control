@@ -1,13 +1,18 @@
+import os
+import random
+import argparse
+import torch
+import numpy as np
+import json
+
 import quadsim
 import controller
 import trajectory
-import numpy as np
-import torch
-import random
-import argparse
-import os
 from bayes_opt import BayesianOptimization
-import json
+
+# global variables to record the results
+ACE_DICT = {}
+STD_DICT = {}
 
 def readparamfile(filename, params=None):
     if params is None:
@@ -40,13 +45,14 @@ def train(C, Q, Name=""):
     return np.mean(ace_error_list)
 
 def test(C, Q, Name, reset_control=True):
+    global ACE_DICT, STD_DICT
+
     print("Testing " + Name)
     C.state = 'test'
     ace_error_list = np.empty(10)
     for round in range(10):
         setup_seed(456+round*11)
         Wind_Velocity = np.random.uniform(low=-Wind_velo, high=0., size=(20,3))
-        # Wind_Velocity = np.random.normal(loc=0, scale=1, size=(20,3))
         log = Q.run(trajectory = t, controller = C, wind_velocity_list = Wind_Velocity, 
                     reset_control=reset_control, Name=Name)
         log['p'] = log['X'][:, 0:3]
@@ -58,25 +64,15 @@ def test(C, Q, Name, reset_control=True):
             np.save(dir+'/'+Name+'_'+str(round), log['p'])
         ace_error = np.mean(np.sqrt(squ_error))
         ace_error_list[round] = ace_error
-    print("*******",Name,"*******")
-    print("ACE Error: %.3f(%.3f)" % (np.mean(ace_error_list), np.std(ace_error_list, ddof=1)))
+    ace = np.mean(ace_error_list)
+    std = np.std(ace_error_list, ddof=1)
+    ACE_DICT[Name] = ace
+    STD_DICT[Name] = std
+    print("*******", Name, "*******")
+    print("ACE Error: %.3f(%.3f)" % (ace, std))
     return np.mean(ace_error_list)
 
 def contrast_algo(given_pid=False, p=0, i=0, d=0):
-    # q_rl = quadsim.Quadrotor()
-    # c_rl = controller.RLController(q_rl)
-    # setup_seed(11)
-    # c_rl.trace = t
-    # c_rl.train()
-    # test(c_rl, q_rl, "RL", False)
-
-    # c_real = controller.RealMachine(eta_a_base=0.01, eta_A_base=0.05)
-    # q_real = quadsim.Quadrotor()
-    # train(c_real, q_real, "real_machine")
-    # torch.save(c_real.phi, "model.pt")
-    # torch.save(c_real.a, "a.npy")
-    # test(c_real, q_real, "real_machine")
-
     c_pid = controller.PIDController(given_pid=given_pid, p=p, i=i, d=d)
     c_linear = controller.MetaAdaptLinear(given_pid=given_pid, p=p, i=i, d=d)
     c_deep = controller.MetaAdaptDeep(given_pid=given_pid, p=p, i=i, d=d, 
